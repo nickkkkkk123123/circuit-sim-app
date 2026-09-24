@@ -1,0 +1,83 @@
+/* 面板样式：颜色全部走 :root 变量，与 src/theme.ts 保持同步（SVG 侧数值在 theme.ts） */
+:root {
+  --bg: #0a0d13;
+  --ink: #dfe3ee;
+  --panel: #12151d;
+  --panel-line: #1e2331;
+  --panel-raise: #1a1f2c;
+  --panel-hover: #222839;
+  --panel-active: #2a3150;
+  --border: #262d40;
+  --border-hot: #3a4462;
+  --accent: #5e6ad2;
+  --accent-soft: #b9c0ff;
+  --muted: #9aa3b8;
+  --faint: #5c6580;
+  --ghost: #4c5468;
+  --readout: #6fd39a;
+  --warn: #e0b36a;
+  --danger: #e08a97;
+  --danger-line: #4a2a33;
+  --grid-dot: #1c2130;
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body, #root { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system-ui, sans-serif; }
+
+.app { display: flex; height: 100%; user-select: none; -webkit-user-select: none; }
+
+.palette {
+  width: 200px; padding: 16px 14px; background: var(--panel);
+  border-right: 1px solid var(--panel-line); display: flex; flex-direction: column; gap: 8px;
+}
+.palette h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
+.palette .hint { font-size: 11px; color: var(--faint); margin-bottom: 6px; }
+.palette button {
+  padding: 9px 12px; background: var(--panel-raise); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--ink); font-size: 13px; cursor: pointer; text-align: left;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+.palette button:hover { background: var(--panel-hover); border-color: var(--border-hot); }
+.palette button:active { transform: scale(0.97); }
+.palette button.active { background: var(--panel-active); border-color: var(--accent); color: var(--accent-soft); }
+.palette .divider { height: 1px; background: var(--panel-line); margin: 8px 0; }
+.palette .tips { font-size: 11px; color: var(--ghost); line-height: 1.8; margin-top: auto; }
+
+.stage { flex: 1; overflow: hidden; }
+.stage svg { width: 100%; height: 100%; display: block; }
+
+.current-flow { animation: flow 0.45s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -18; } }
+
+/* 元件：描边与灯泡填充平滑过渡；新放置时弹入 */
+.symbol line, .symbol rect, .symbol circle { transition: stroke 0.2s, fill 0.45s; }
+.pop-in { animation: pop-in 0.18s ease-out; transform-box: fill-box; transform-origin: center; }
+@keyframes pop-in { from { transform: scale(0.7); opacity: 0.4; } }
+
+/* 端子：吸附/悬停时放大 + 变色平滑 */
+.terminal { transition: r 0.15s, fill 0.15s; }
+
+.inspector {
+  width: 240px; padding: 16px 14px; background: var(--panel);
+  border-left: 1px solid var(--panel-line); display: flex; flex-direction: column; gap: 10px;
+}
+.inspector h2 { font-size: 14px; font-weight: 600; color: var(--accent-soft); }
+.params { display: flex; flex-direction: column; gap: 12px; }
+.params label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.params input[type='range'] { accent-color: var(--accent); width: 100%; }
+.params input[type='number'] {
+  background: var(--panel-raise); border: 1px solid var(--border); border-radius: 6px; color: var(--ink);
+  padding: 6px 8px; font-size: 13px;
+}
+.params button.wide {
+  padding: 8px; background: var(--panel-raise); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--ink); cursor: pointer; font-size: 13px; transition: background 0.15s, border-color 0.15s;
+}
+.params button.wide:hover { background: var(--panel-hover); }
+.params button.danger { border-color: var(--danger-line); color: var(--danger); }
+.readout {
+  background: #161c2a; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  font-size: 12px; color: var(--readout); display: flex; flex-direction: column; gap: 4px;
+}
+.warn { font-size: 12px; color: var(--warn); }
