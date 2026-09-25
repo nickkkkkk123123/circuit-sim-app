@@ -35,6 +35,7 @@ function buildNodes(circuit: Circuit) {
     nodeIds.push(...terminalsOf(c).map((t) => `${c.id}:${t}`))
     if (c.kind === 'rheostat') nodeIds.push(`${c.id}:__p`)
     if (c.kind === 'rheostat' && c.expanded) nodeIds.push(`${c.id}:__t`)
+    if (c.kind === 'battery' && c.expanded) nodeIds.push(`${c.id}:__e`) // 展开态：E 与 r 的串联点
   }
   return { nodeIds: [...new Set(nodeIds)] }
 }
@@ -75,7 +76,15 @@ export function solve(circuit: Circuit): SolveResult {
     const nb = find(`${c.id}:b`)
     switch (c.kind) {
       case 'battery':
-        branches.push({ refId: c.id, kind: 'battery', na, nb, r: c.r, emf: c.emf })
+        if (c.expanded) {
+          // 展开态：理想电动势支路 + 独立内阻支路串联（a —E— __e —r— b）
+          const ne = find(`${c.id}:__e`)
+          branches.push({ refId: c.id, kind: 'battery', na, nb: ne, r: 0.001, emf: c.emf })
+          addRes(`${c.id}:ir`, 'resistor', ne, nb, Math.max(c.r, 1e-3))
+        } else {
+          // 紧凑态：E 与内阻合一；r=0 视作理想电源（钳位 1mΩ 防奇异）
+          branches.push({ refId: c.id, kind: 'battery', na, nb, r: Math.max(c.r, 1e-3), emf: c.emf })
+        }
         break
       case 'resistor':
         addRes(c.id, 'resistor', na, nb, c.r)

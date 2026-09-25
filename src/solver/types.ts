@@ -12,7 +12,8 @@ export interface BaseComp {
 export interface Battery extends BaseComp {
   kind: 'battery'
   emf: number // 电动势 V
-  r: number // 内阻 Ω
+  r: number // 内阻 Ω（0=理想电源，求解器钳位 1mΩ）
+  expanded?: boolean // 展开内部结构：E 与 r 串联的虚线框图示（旧数据缺省=紧凑态）
 }
 export interface Resistor extends BaseComp {
   kind: 'resistor'
@@ -99,7 +100,7 @@ export function terminalPos(c: Comp, t: TerminalId): { x: number; y: number } {
 export function defaultComp(kind: CompKind, id: string, x: number, y: number): Comp {
   switch (kind) {
     case 'battery':
-      return { id, kind, x, y, rot: 0, emf: 6, r: 0.5 }
+      return { id, kind, x, y, rot: 0, emf: 6, r: 0.5, expanded: false }
     case 'resistor':
       return { id, kind, x, y, rot: 0, r: 10 }
     case 'bulb':

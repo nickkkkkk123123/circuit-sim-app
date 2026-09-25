@@ -27,24 +27,36 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown }: {
+function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown, onToggle }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
   onPointerDown: (e: React.PointerEvent) => void
   onContextMenu: (e: React.MouseEvent) => void
   onSliderPointerDown?: (e: React.PointerEvent, c: Comp) => void
+  onToggle?: (c: Comp) => void
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
   const body = (
     <>
-      {c.kind === 'battery' && (
+      {c.kind === 'battery' && (c.expanded ? (
+        // 展开态：虚线框内 E（电池符号）与 r（内阻）串联——"实际电源=理想电源+内阻"教学图示
+        <>
+          <rect x={-46} y={-26} width={92} height={52} fill="none" stroke="#55617e" strokeWidth={1.5} strokeDasharray="5 4" rx={6} />
+          <line x1={-16} y1={-18} x2={-16} y2={18} stroke={stroke} strokeWidth={3} />
+          <line x1={-6} y1={-10} x2={-6} y2={10} stroke={stroke} strokeWidth={6} />
+          <line x1={-6} y1={0} x2={10} y2={0} stroke={stroke} strokeWidth={2} />
+          <rect x={10} y={-7} width={18} height={14} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
+          <text x={1} y={-13} fill={T.label} fontSize={11}>E</text>
+          <text x={17} y={-13} fill={T.label} fontSize={11}>r</text>
+        </>
+      ) : (
         <>
           <line x1={-6} y1={-18} x2={-6} y2={18} stroke={stroke} strokeWidth={3} />
           <line x1={6} y1={-10} x2={6} y2={10} stroke={stroke} strokeWidth={6} />
         </>
-      )}
+      ))}
       {c.kind === 'resistor' && (
         <rect x={-20} y={-9} width={40} height={18} fill="none" stroke={stroke} strokeWidth={2.5} rx={2} />
       )}
@@ -131,7 +143,17 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
   return (
     <g transform={`translate(${c.x} ${c.y}) rotate(${c.rot})`}>
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
-        <rect x={-d} y={-26} width={d * 2} height={52} fill="transparent" />
+        {/* 命中热区：开关额外放大（可双击通断），电池展开态随虚线框加宽 */}
+        <rect
+          x={c.kind === 'battery' && c.expanded ? -48 : -d}
+          y={-28}
+          width={c.kind === 'battery' && c.expanded ? 96 : d * 2}
+          height={56}
+          fill="transparent"
+        />
+        {c.kind === 'switch' && (
+          <rect x={-40} y={-30} width={80} height={60} fill="transparent" onDoubleClick={() => onToggle?.(c)} />
+        )}
         {c.rot === 0 && body}
         {c.rot === 90 && <g transform="rotate(90)">{body}</g>}
       </g>
@@ -318,9 +340,11 @@ export default function App() {
         <div className="divider" />
         <button onClick={s.loadDemo}>演示电路</button>
         <p className="tips">
-          选中后：R 旋转 · Del 删除<br />
-          点端子开始连线，点另一端完成<br />
-          Esc 取消连线 · 双击开关通断
+          按住端子拖到另一端松手即连线<br />
+          （或点两个端子）· Esc 取消连线<br />
+          双击开关通断 · R 旋转 · Del 删除<br />
+          变阻器：拖箭头调阻值 · 选中可展开<br />
+          电源：选中可展开 E+r 内部结构
         </p>
       </aside>
 
@@ -334,10 +358,6 @@ export default function App() {
           onPointerUp={release}
           onPointerCancel={release}
           onContextMenu={onContextMenu}
-          onDoubleClick={() => {
-            if (s.selectedId && s.comps.find((c) => c.id === s.selectedId)?.kind === 'switch')
-              s.toggleSwitch(s.selectedId)
-          }}
         >
           <defs>
             <pattern id="grid" width={25} height={25} patternUnits="userSpaceOnUse">
@@ -429,6 +449,7 @@ export default function App() {
                 solved={result.byComp[c.id]}
                 onPointerDown={(e) => onCompBodyPointerDown(e, c)}
                 onSliderPointerDown={onSliderPointerDown}
+                onToggle={(c) => s.toggleSwitch(c.id)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -475,10 +496,13 @@ export default function App() {
                   <input type="range" min={1} max={24} step={0.5} value={selected.emf}
                     onChange={(e) => s.updateParam(selected.id, 'emf', +e.target.value)} />
                 </label>
-                <label>内阻 {selected.r}Ω
-                  <input type="range" min={0.1} max={10} step={0.1} value={selected.r}
+                <label>内阻 {selected.r === 0 ? '0（理想电源）' : `${selected.r}Ω`}
+                  <input type="range" min={0} max={10} step={0.1} value={selected.r}
                     onChange={(e) => s.updateParam(selected.id, 'r', +e.target.value)} />
                 </label>
+                <button className="wide" onClick={() => s.updateParam(selected.id, 'expanded', !selected.expanded)}>
+                  {selected.expanded ? '收起内部结构' : '展开内部结构（E + r）'}
+                </button>
               </>
             )}
             {selected.kind === 'resistor' && (

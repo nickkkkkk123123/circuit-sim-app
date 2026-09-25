@@ -141,4 +141,30 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires })
     expect(r.byComp['r1'].current).toBeCloseTo(6 / 20.502, 2)
   })
+
+  it('电池内阻调到 0 → 理想电源（钳位 1mΩ），6V+6Ω 回路电流 ≈1A', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0, expanded: false },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 6 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['r1'].current).toBeCloseTo(1, 2)
+  })
+
+  it('电池展开态：E 与 r 独立串联，6V r=1 + 外阻 10 → I = 6/11', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 1, expanded: true },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 11.001, 2)
+  })
 })
