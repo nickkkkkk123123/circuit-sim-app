@@ -29,7 +29,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown }: {
+function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -37,6 +37,7 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
   onContextMenu: (e: React.MouseEvent) => void
   onSliderPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
+  onDialOpen?: (c: Comp) => void
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -86,16 +87,22 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
         )
       })()}
       {isMeter && (!c.expanded || c.ideal) && (() => {
-        // 经典电路图符号：圆 + V/A，测量值显示在符号上方
+        // 经典电路图符号：圆 + V/A，测量值显示在符号上方（点击示数 → 表盘读数练习）
         return (
           <>
             <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
             <text x={0} y={8} textAnchor="middle" fontSize={20} fontWeight={700} fill={stroke}>{isVoltmeter ? 'V' : 'A'}</text>
-            <text x={0} y={-28} textAnchor="middle" fontSize={13} fontWeight={600}
-              fill={meterVal > 1e-9 ? T.readout : T.label}>
-              {meterVal.toFixed(2)}{isVoltmeter ? 'V' : 'A'}
+            <text
+              x={0} y={-28} textAnchor="middle" fontSize={13} fontWeight={600}
+              fill={meterVal > 1e-9 ? T.readout : T.label}
+              style={{ cursor: c.customRange ? 'default' : 'pointer' }}
+              onPointerDown={(e) => { e.stopPropagation(); if (!c.customRange) onDialOpen?.(c) }}
+            >
+              {meterVal.toFixed(2)}{isVoltmeter ? 'V' : 'A'}{c.customRange ? '' : ' ◦'}
             </text>
-            {!c.ideal && <text x={0} y={34} textAnchor="middle" fontSize={10} fill={T.label}>实际①</text>}
+            <text x={0} y={34} textAnchor="middle" fontSize={10} fill={T.label}>
+              {c.ideal ? '理想' : '实际①'} · 量程 {c.range}{isVoltmeter ? 'V' : 'A'}
+            </text>
           </>
         )
       })()}
@@ -241,6 +248,7 @@ export default function App() {
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
   const lastTermAction = useRef<{ term: string; ts: number } | null>(null)
+  const [dialFor, setDialFor] = useState<string | null>(null) // 表盘读数练习弹窗（元件 id）
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
 
@@ -558,6 +566,7 @@ export default function App() {
                 onPointerDown={(e) => onCompBodyPointerDown(e, c)}
                 onSliderPointerDown={onSliderPointerDown}
                 onSwitchPointerDown={onSwitchPointerDown}
+                onDialOpen={(c) => setDialFor(c.id)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -663,11 +672,30 @@ export default function App() {
             {(selected.kind === 'voltmeter' || selected.kind === 'ammeter') && (() => {
               const isV = selected.kind === 'voltmeter'
               const unit = isV ? 'V' : 'A'
+              const low = isV ? 3 : 0.6
+              const high = isV ? 15 : 3
               const rMin = isV ? 100 : 0.01
               const rMax = isV ? 100000 : 1
               const rStep = isV ? 100 : 0.01
               return (
                 <>
+                  <label>量程 0~{selected.range}{unit}
+                    <button className="wide" disabled={selected.customRange}
+                      onClick={() => s.updateParam(selected.id, 'range', selected.range === low ? high : low)}>
+                      切换量程（{low}{unit} ↔ {high}{unit}）
+                    </button>
+                  </label>
+                  <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={!!selected.customRange}
+                      onChange={(e) => s.updateParam(selected.id, 'customRange', e.target.checked)} />
+                    自定义量程（关闭表盘练习）
+                  </label>
+                  {!!selected.customRange && (
+                    <label>自定义量程 0~{selected.range}{unit}
+                      <input type="range" min={isV ? 1 : 0.1} max={isV ? 24 : 5} step={isV ? 0.5 : 0.1} value={selected.range}
+                        onChange={(e) => s.updateParam(selected.id, 'range', +e.target.value)} />
+                    </label>
+                  )}
                   <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <input type="checkbox" checked={selected.ideal}
                       onChange={(e) => {
@@ -690,6 +718,7 @@ export default function App() {
                   <p className="warn" style={{ margin: 0 }}>
                     {isV ? '并联在被测元件两端' : '串联接入被测支路'}
                     {selected.ideal ? ' · 理想表不影响电路' : ' · 实际表会改变电路，注意读数偏差'}
+                    {selected.customRange ? ' · 自定义量程下无表盘可读' : ' · 点示数可查看表盘'}
                   </p>
                 </>
               )
@@ -711,6 +740,49 @@ export default function App() {
         )}
         {result.openCircuit && <p className="warn">⚠ 电路存在断路</p>}
       </aside>
+
+      {dialFor && (() => {
+        // 表盘读数练习弹窗：180° 弧形刻度盘（0 / ¼ / ½ / ¾ / 满偏），指针随实测值偏转
+        const c = s.comps.find((k) => k.id === dialFor)
+        if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter') || c.customRange) return null
+        const isV = c.kind === 'voltmeter'
+        const unit = isV ? 'V' : 'A'
+        const val = Math.abs(isV ? result.byComp[c.id]?.dv ?? 0 : result.byComp[c.id]?.current ?? 0)
+        const R = 80, CX = 100, CY = 100
+        const dir = (deg: number) => ({ x: CX + Math.sin((deg * Math.PI) / 180) * R, y: CY - Math.cos((deg * Math.PI) / 180) * R })
+        const frac = Math.max(0, Math.min(1, val / c.range))
+        const ndeg = -90 + 180 * frac
+        const nd = dir(ndeg)
+        const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+          const deg = -90 + 180 * f
+          const o = dir(deg), i = { x: CX + Math.sin((deg * Math.PI) / 180) * (R - 14), y: CY - Math.cos((deg * Math.PI) / 180) * (R - 14) }
+          const lbl = { x: CX + Math.sin((deg * Math.PI) / 180) * (R - 24), y: CY - Math.cos((deg * Math.PI) / 180) * (R - 24) + 4 }
+          const v = c.range * f
+          return { o, i, lbl, v }
+        })
+        return (
+          <div className="dial-overlay" onPointerDown={() => setDialFor(null)}>
+            <div className="dial-card" onPointerDown={(e) => e.stopPropagation()}>
+              <h3>{isV ? '电压表' : '电流表'}读数 · 量程 0~{c.range}{unit}</h3>
+              <svg width={220} height={150} viewBox="0 0 200 150">
+                <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="#9aa5b8" strokeWidth={2} />
+                {ticks.map((t, i) => (
+                  <g key={i}>
+                    <line x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#dfe3ee" strokeWidth={i === 0 || i === 4 ? 2.5 : 1.5} />
+                    <text x={t.lbl.x} y={t.lbl.y} textAnchor="middle" fontSize={11} fill="#9aa5b8">
+                      {+t.v.toFixed(2)}
+                    </text>
+                  </g>
+                ))}
+                <line x1={CX} y1={CY} x2={nd.x} y2={nd.y} stroke="#c0392b" strokeWidth={2.5} strokeLinecap="round" />
+                <circle cx={CX} cy={CY} r={4} fill="#c0392b" />
+              </svg>
+              <div className="dial-val">{val.toFixed(2)}{unit}</div>
+              <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

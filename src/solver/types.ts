@@ -39,7 +39,8 @@ export interface Voltmeter extends BaseComp {
   kind: 'voltmeter'
   r: number // 内阻 Ω（实际模式）= Rg + 分压电阻
   ideal: boolean // 理想模式：内阻 10MΩ，对电路无影响
-  range: number // 量程 V（表盘满偏）
+  range: number // 量程 V：3 或 15（学生表双档）；customRange 开启时可任意
+  customRange?: boolean // 自定义量程模式：可任意设量程，但禁用表盘读数练习
   expanded?: boolean // 展开内部结构：表头 G 串联分压电阻（仅实际模式）
 }
 
@@ -47,7 +48,8 @@ export interface Ammeter extends BaseComp {
   kind: 'ammeter'
   r: number // 内阻 Ω（实际模式）= Rg ∥ 分流电阻
   ideal: boolean // 理想模式：内阻 1mΩ
-  range: number // 量程 A（表盘满偏）
+  range: number // 量程 A：0.6 或 3（学生表双档）；customRange 开启时可任意
+  customRange?: boolean // 自定义量程模式
   expanded?: boolean // 展开内部结构：表头 G 并联分流电阻（仅实际模式）
 }
 
@@ -133,8 +135,8 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
     case 'rheostat':
       return { id, kind, x, y, rot: 0, Rmax: 20, pos: 0.5, expanded: false }
     case 'voltmeter':
-      return { id, kind, x, y, rot: 0, r: 3000, ideal: true, range: 15 }
+      return { id, kind, x, y, rot: 0, r: 3000, ideal: true, range: 3, customRange: false }
     case 'ammeter':
-      return { id, kind, x, y, rot: 0, r: 0.1, ideal: true, range: 3 }
+      return { id, kind, x, y, rot: 0, r: 0.1, ideal: true, range: 0.6, customRange: false }
   }
 }
