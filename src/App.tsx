@@ -347,13 +347,14 @@ export default function App() {
   const onCanvasPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
     if (pan) {
-      // 平移画布：增量在屏幕像素空间计算（除以 svg 线性系数 × 缩放），与 g 的当前变换无关 → 不会振荡
+      // 平移画布：增量在屏幕像素空间计算，只除 svg 线性系数（k）——
+      // 1:1 跟手的关键：dtx = D/k，与视图缩放无关（多除一次 scale 就是现在的变速 bug）
       if (pan.active || Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy) > 6) {
         if (!pan.active) setPan({ ...pan, active: true })
         const ctmSvg = svgRef.current?.getScreenCTM()
-        const perScreen = ctmSvg ? 1 / ctmSvg.a : 1
-        const worldDx = (e.clientX - pan.sx) * perScreen / viewRef.current.scale
-        const worldDy = (e.clientY - pan.sy) * perScreen / viewRef.current.scale
+        const k = ctmSvg?.a ?? 1
+        const worldDx = (e.clientX - pan.sx) / k
+        const worldDy = (e.clientY - pan.sy) / k
         applyView({ scale: viewRef.current.scale, tx: pan.tx0 + worldDx, ty: pan.ty0 + worldDy })
       }
       return
