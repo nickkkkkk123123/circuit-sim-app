@@ -1273,7 +1273,8 @@ export default function App() {
             const f = i / 30
             const major = i % 10 === 0
             const mid = i % 5 === 0
-            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major, lbl: major ? String(hiNums[i / 10]) : undefined })
+            // 大量程数字由下方 numFs 统一绘制（这里再画一遍会和它叠成"数字虚影"）
+            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major, lbl: undefined })
           }
         }
         return (
