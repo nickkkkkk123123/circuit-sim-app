@@ -709,7 +709,7 @@ export default function App() {
                     理想电表（内阻无穷{'大'}/零）
                   </label>
                   {!selected.ideal && (
-                    <label>内阻 {selected.r}{unit}（影响电路）
+                    <label>内阻 {selected.r}Ω（影响电路）
                       <input type="range" min={rMin} max={rMax} step={rStep} value={selected.r}
                         onChange={(e) => s.updateParam(selected.id, 'r', +e.target.value)} />
                     </label>
