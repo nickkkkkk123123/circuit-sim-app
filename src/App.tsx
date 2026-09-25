@@ -343,7 +343,7 @@ export default function App() {
         <p className="tips">
           按住端子拖到另一端松手即连线<br />
           （或点两个端子）· Esc 取消连线<br />
-          双击开关通断 · R 旋转 · Del 删除<br />
+          单击开关通断 · R 旋转 · Del 删除<br />
           变阻器：拖箭头调阻值 · 选中可展开<br />
           电源：选中可展开 E+r 内部结构
         </p>
