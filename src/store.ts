@@ -37,7 +37,6 @@ interface EditorState extends Circuit {
   setTool: (t: Tool) => void
   place: (kind: CompKind, x: number, y: number) => void
   moveComp: (id: string, x: number, y: number) => void
-  snapComp: (id: string) => void
   rotate: (id: string) => void
   remove: (id: string) => void
   toggleSwitch: (id: string) => void
@@ -69,15 +68,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   moveComp: (id, x, y) =>
-    // 拖动过程不吸附（放大后 5px 跳步=不跟手），松手时由 snapComp 吸附
-    set((s) => ({
-      comps: s.comps.map((c) => (c.id === id ? { ...c, x, y } : c)),
-    })),
-
-  snapComp: (id) =>
     set((s) => ({
       comps: s.comps.map((c) =>
-        c.id === id ? { ...c, x: Math.round(c.x / 5) * 5, y: Math.round(c.y / 5) * 5 } : c,
+        c.id === id ? { ...c, x: Math.round(x / 5) * 5, y: Math.round(y / 5) * 5 } : c,
       ),
     })),
 
