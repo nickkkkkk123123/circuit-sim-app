@@ -17,12 +17,12 @@ const KIND_NAME: Record<CompKind, string> = {
   switch: '开关',
 }
 
-function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
-  return (e: React.PointerEvent | React.MouseEvent) => {
-    const svg = svgRef.current!
-    const ctm = svg.getScreenCTM()
+function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: React.RefObject<SVGGElement | null>) {
+  return (e: React.PointerEvent | React.MouseEvent | WheelEvent) => {
+    // 优先用世界坐标系容器（g）的 CTM——它包含缩放/平移变换；svg 自身的 CTM 只有 viewBox 映射
+    const el = worldRef.current ?? svgRef.current
+    const ctm = el?.getScreenCTM()
     if (!ctm) return { x: 0, y: 0 }
-    // 精确逆变换：自动处理 letterbox 与缩放，不会错位
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse())
     return { x: p.x, y: p.y }
   }
@@ -246,7 +246,8 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
 export default function App() {
   const s = useEditor()
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const toCanvas = useCursorPos(svgRef)
+  const gRef = useRef<SVGGElement | null>(null)
+  const toCanvas = useCursorPos(svgRef, gRef)
   const [dragging, setDragging] = useState<{ id: string; dx: number; dy: number } | null>(null)
   const [sliderDrag, setSliderDrag] = useState<{ id: string } | null>(null)
   const [switchPress, setSwitchPress] = useState<{ id: string; x0: number; y0: number; dx: number; dy: number; moved: boolean } | null>(null)
@@ -262,7 +263,7 @@ export default function App() {
     setViewState(v)
   }
   useEffect(() => {
-    const el = svgRef.current
+    const el = gRef.current ?? svgRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
@@ -527,7 +528,7 @@ export default function App() {
               <circle cx={1} cy={1} r={1} fill="var(--grid-dot)" />
             </pattern>
           </defs>
-          <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
+          <g ref={gRef} transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
           <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#grid)" />
 
           {s.wires.map((w) => {
