@@ -123,7 +123,6 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
             </text>
             <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
             <text x={0} y={8} textAnchor="middle" fontSize={20} fontWeight={700} fill={stroke}>Ω</text>
-            <text x={0} y={34} textAnchor="middle" fontSize={10} fill={T.label}>断电测电阻</text>
           </>
         )
       })()}
@@ -167,9 +166,6 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
             >
               {meterVal.toFixed(2)}{isVoltmeter ? 'V' : 'A'}
               {!c.customRange && <title>点击查看表盘</title>}
-            </text>
-            <text x={0} y={46} textAnchor="middle" fontSize={10} fill={T.label}>
-              {c.ideal ? '理想' : '实际①'} · 量程 {c.range}{isVoltmeter ? 'V' : 'A'}
             </text>
           </>
         )
@@ -268,7 +264,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
-    : isMeter ? (c.ideal ? '理想' : '实际①')
+    : isMeter ? `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`
     : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
     : c.kind === 'rheostat' ? (c.expanded
