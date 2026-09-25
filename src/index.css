@@ -15,6 +15,7 @@
   --faint: #5c6580;
   --ghost: #4c5468;
   --readout: #6fd39a;
+  --readout-bg: #161c2a;
   --warn: #e0b36a;
   --danger: #e08a97;
   --danger-line: #4a2a33;
@@ -49,6 +50,7 @@
   --faint: #8a92a5;
   --ghost: #a5adbd;
   --readout: #178a52;
+  --readout-bg: #f2f4f9;
   --warn: #b06f1f;
   --danger: #c25062;
   --danger-line: #e8c4cb;
@@ -82,8 +84,11 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
 }
 .palette.resizing { transition: background 0.3s ease; }
-.pal-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
-.pal-head h1 { flex: 1; }
+.pal-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--panel-line);
+}
+.pal-head h1 { flex: 1; border-bottom: none; padding-bottom: 0; }
 .icon-btn {
   width: 26px; height: 26px; border-radius: 6px; flex: none; cursor: pointer;
   background: var(--panel-raise); border: 1px solid var(--border); color: var(--muted);
@@ -101,7 +106,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 }
 .mini-svg { display: block; }
 .palette .hint, .palette .tips { white-space: nowrap; }
-.palette h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; padding-bottom: 10px; border-bottom: 1px solid var(--panel-line); margin-bottom: 2px; }
+.palette h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
 .palette .hint { font-size: 11px; color: var(--faint); margin-bottom: 6px; }
 .palette button {
   display: flex; align-items: center; gap: 10px;
@@ -168,7 +173,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .params button.wide:hover { background: var(--panel-hover); }
 .params button.danger { border-color: var(--danger-line); color: var(--danger); }
 .readout {
-  background: #161c2a; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  background: var(--readout-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
   font-size: 12px; color: var(--readout); display: flex; flex-direction: column; gap: 4px;
 }
 .warn { font-size: 12px; color: var(--warn); }
