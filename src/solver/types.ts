@@ -68,9 +68,9 @@ export interface Spdt extends BaseComp {
   pos: 1 | 2 | 0 // 单刀双掷（ON-OFF-ON）：1=接通触点1，2=接通触点2，0=中间位断开
 }
 
-export interface Led extends BaseComp {
+export interface Diode extends BaseComp {
   kind: 'led'
-  // 发光二极管：正向压降 Vf=2V（导通后近似恒压+小电阻），反向截止；电流方向 a→b
+  led?: boolean // 发光型（LED）：导通时发光；缺省=普通二极管（纯符号）
 }
 
 // LED 参数：正向压降、导通电阻、截止电阻、亮度基准电流
@@ -83,7 +83,7 @@ export const LED_I_FULL = 0.02
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Spdt | Led
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Spdt | Diode
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
