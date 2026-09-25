@@ -102,9 +102,10 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
               style={{ cursor: c.customRange ? 'default' : 'pointer' }}
               onPointerDown={(e) => { e.stopPropagation(); if (!c.customRange) onDialOpen?.(c) }}
             >
-              {meterVal.toFixed(2)}{isVoltmeter ? 'V' : 'A'}{c.customRange ? '' : ' ◦'}
+              {meterVal.toFixed(2)}{isVoltmeter ? 'V' : 'A'}
+              {!c.customRange && <title>点击查看表盘</title>}
             </text>
-            <text x={0} y={34} textAnchor="middle" fontSize={10} fill={T.label}>
+            <text x={0} y={46} textAnchor="middle" fontSize={10} fill={T.label}>
               {c.ideal ? '理想' : '实际①'} · 量程 {c.range}{isVoltmeter ? 'V' : 'A'}
             </text>
           </>
