@@ -27,14 +27,14 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown, onToggle }: {
+function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
   onPointerDown: (e: React.PointerEvent) => void
   onContextMenu: (e: React.MouseEvent) => void
   onSliderPointerDown?: (e: React.PointerEvent, c: Comp) => void
-  onToggle?: (c: Comp) => void
+  onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -152,8 +152,11 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
           fill="transparent"
         />
         {c.kind === 'switch' && (
-          // 单击通断（拖动离开热区则视为移动，不翻转）——不再依赖双击
-          <rect x={-40} y={-30} width={80} height={60} fill="transparent" onClick={() => onToggle?.(c)} />
+          // 单击通断（按下/松手位移 <6px 判定）；拖远=移动元件。不用 onClick：指针捕获会重定向 click 导致失灵
+          <rect
+            x={-40} y={-30} width={80} height={60} fill="transparent"
+            onPointerDown={(e) => { e.stopPropagation(); onSwitchPointerDown?.(e, c) }}
+          />
         )}
         {c.rot === 0 && body}
         {c.rot === 90 && <g transform="rotate(90)">{body}</g>}
@@ -174,6 +177,7 @@ export default function App() {
   const toCanvas = useCursorPos(svgRef)
   const [dragging, setDragging] = useState<{ id: string; dx: number; dy: number } | null>(null)
   const [sliderDrag, setSliderDrag] = useState<{ id: string } | null>(null)
+  const [switchPress, setSwitchPress] = useState<{ id: string; x0: number; y0: number; dx: number; dy: number; moved: boolean } | null>(null)
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
   const lastTermAction = useRef<{ term: string; ts: number } | null>(null)
@@ -247,6 +251,15 @@ export default function App() {
       }
       return
     }
+    if (switchPress) {
+      // 开关：拖远（>6px）转为移动元件
+      const dist = Math.hypot(x - switchPress.x0, y - switchPress.y0)
+      if (dist > 6 || switchPress.moved) {
+        s.moveComp(switchPress.id, x - switchPress.dx, y - switchPress.dy)
+        if (!switchPress.moved) setSwitchPress({ ...switchPress, moved: true })
+      }
+      return
+    }
     if (dragging) {
       s.moveComp(dragging.id, x - dragging.dx, y - dragging.dy)
       return
@@ -296,9 +309,24 @@ export default function App() {
     s.select(c.id)
   }
 
+  // 开关：按下记原点，松手位移 <6px = 翻转通断，拖远 = 移动元件（与拖拽同款手感）
+  const onSwitchPointerDown = (e: React.PointerEvent, c: Comp) => {
+    if (s.pendingFrom || s.tool !== 'select') return
+    const { x, y } = toCanvas(e)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setSwitchPress({ id: c.id, x0: x, y0: y, dx: x - c.x, dy: y - c.y, moved: false })
+    s.select(c.id)
+  }
+
   const release = () => {
     setDragging(null)
     setSliderDrag(null)
+    // 开关：没拖远 = 翻转通断
+    if (switchPress) {
+      if (!switchPress.moved) s.toggleSwitch(switchPress.id)
+      setSwitchPress(null)
+      return
+    }
     // 拖线式连线：按住端子拖到目标端子上松手即完成（回到起点松手则取消）
     if (s.pendingFrom && hoverTerm && hoverTerm !== s.pendingFrom) {
       s.completeWire(hoverTerm)
@@ -450,7 +478,7 @@ export default function App() {
                 solved={result.byComp[c.id]}
                 onPointerDown={(e) => onCompBodyPointerDown(e, c)}
                 onSliderPointerDown={onSliderPointerDown}
-                onToggle={(c) => s.toggleSwitch(c.id)}
+                onSwitchPointerDown={onSwitchPointerDown}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
