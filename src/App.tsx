@@ -438,6 +438,9 @@ export default function App() {
   }
 
   const release = (e?: React.PointerEvent) => {
+    // 拖完吸附到 5px 网格（拖动过程跟手，落点整洁）
+    if (dragging) s.snapComp(dragging.id)
+    if (switchPress?.moved) s.snapComp(switchPress.id)
     setDragging(null)
     setSliderDrag(null)
     // 平移结束：未拖动=维持原"取消选中"语义
