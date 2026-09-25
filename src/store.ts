@@ -103,6 +103,14 @@ export const useEditor = create<EditorState>((set, get) => ({
       comps: s.comps.map((c) =>
         c.id === id && c.kind === 'rheostat' ? ({ ...c, expanded } as Comp) : c,
       ),
+      // 展开时 compact 的滑片端子 p 消失 → 挂在 p 上的导线迁移到杆端 c（电气等价：都在杆上）
+      wires: expanded
+        ? get().wires.map((w) => ({
+            ...w,
+            a: w.a === `${id}:p` ? `${id}:c` : w.a,
+            b: w.b === `${id}:p` ? `${id}:c` : w.b,
+          }))
+        : get().wires,
     }))
     return true
   },

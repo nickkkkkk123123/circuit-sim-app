@@ -77,7 +77,8 @@ export function terminalPos(c: Comp, t: TerminalId): { x: number; y: number } {
         c: [-RHEO_HALF_W, -RHEO_ROD_Y],
         d: [RHEO_HALF_W, -RHEO_ROD_Y],
       }
-      const [lx, ly] = local[t]!
+      // 防御：悬空端子（如切换模式瞬间的 :p 导线）落到 a 位，绝不让渲染层崩
+      const [lx, ly] = local[t] ?? local.a!
       // 90° 旋转与两端子元件同约定：a→上方，b→下方
       if (c.rot === 90) return { x: c.x - ly, y: c.y + lx }
       return { x: c.x + lx, y: c.y + ly }
