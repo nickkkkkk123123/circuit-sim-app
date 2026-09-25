@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
 import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, type Comp, type CompKind } from './solver/types'
+import { EXPERIMENTS } from './experiments'
 import { THEME as T } from './theme'
 
 const W = 1600
@@ -753,7 +754,7 @@ export default function App() {
           </button>
         ))}
         <div className="divider" />
-        <button onClick={s.loadDemo}><span className="dot" style={{ background: '#5e6ad2' }} />演示电路</button>
+        <button onClick={() => s.setDemoOpen(true)}><span className="dot" style={{ background: '#5e6ad2' }} />演示电路</button>
         <p className="tips">
           按住端子拖到另一端松手即连线<br />
           （或点两个端子）· Esc 取消连线<br />
@@ -1225,6 +1226,33 @@ export default function App() {
           </div>
         )
       })()}
+      {s.demoOpen && (
+        <div className="dial-overlay" onClick={() => s.setDemoOpen(false)}>
+          <div className="exp-picker" onClick={(e) => e.stopPropagation()}>
+            <div className="exp-picker-head">
+              <h2>选择实验电路</h2>
+              <button className="icon-btn" onClick={() => s.setDemoOpen(false)} title="关闭">×</button>
+            </div>
+            {['基础', '必修三 · 电学实验', '拓展'].map((group) => {
+              const items = EXPERIMENTS.filter((e) => e.group === group)
+              if (!items.length) return null
+              return (
+                <section key={group}>
+                  <h3>{group}</h3>
+                  <div className="exp-cards">
+                    {items.map((e) => (
+                      <button key={e.id} className="exp-card" onClick={() => s.loadExperiment(e.id)}>
+                        <strong>{e.name}</strong>
+                        <span>{e.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

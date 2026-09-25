@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Circuit, Comp, CompKind, Wire } from './solver/types'
 import { defaultComp } from './solver/types'
+import { EXPERIMENTS } from './experiments'
 
 let uid = 0
 const nextId = (kind: string) => `${kind}-${++uid}`
@@ -49,6 +50,9 @@ interface EditorState extends Circuit {
   completeWire: (term: string) => void
   cancelWire: () => void
   loadDemo: () => void
+  demoOpen: boolean
+  setDemoOpen: (open: boolean) => void
+  loadExperiment: (id: string) => void
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -59,6 +63,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectedId: null,
   selectedWire: null,
   pendingFrom: null,
+  demoOpen: false,
 
   setTool: (tool) => set({ tool, pendingFrom: null, selectedId: null }),
 
@@ -151,23 +156,27 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   cancelWire: () => set({ pendingFrom: null }),
 
-  loadDemo: () => {
-    uid = 0
-    // 矩形回路布局：所有端子坐标对齐，导线全部横平竖直
-    const comps: Comp[] = [
-      { id: 'sw-1', kind: 'switch', x: 350, y: 200, rot: 0, closed: true },
-      { id: 'bulb-1', kind: 'bulb', x: 650, y: 200, rot: 0, r: 10, ratedP: 3.6 },
-      { id: 'bat-1', kind: 'battery', x: 350, y: 500, rot: 0, emf: 6, r: 0.5, expanded: false },
-      { id: 'res-1', kind: 'resistor', x: 644, y: 500, rot: 0, r: 15 },
-    ]
-    const wires: Wire[] = [
-      { id: 'w-1', a: 'sw-1:a', b: 'bat-1:a' }, // 左侧竖线
-      { id: 'w-2', a: 'sw-1:b', b: 'bulb-1:a' }, // 顶边横线
-      { id: 'w-3', a: 'bulb-1:b', b: 'res-1:b' }, // 右侧竖线（落在电阻右端子）
-      { id: 'w-4', a: 'res-1:a', b: 'bat-1:b' }, // 底边横线（电阻左端子出）
-    ]
-    uid = 5
-    set({ comps, wires, tool: 'select', selectedId: null, pendingFrom: null })
+  loadDemo: () => get().loadExperiment('basic'),
+
+  setDemoOpen: (demoOpen) => set({ demoOpen }),
+
+  // 载入实验预设：包内 id 只保证唯一，这里统一重编全局 id，避免与画布现有元件撞车
+  loadExperiment: (id) => {
+    const exp = EXPERIMENTS.find((e) => e.id === id)
+    if (!exp) return
+    const c0 = exp.build()
+    const idMap = new Map<string, string>()
+    const comps = c0.comps.map((c) => {
+      const nid = nextId(c.kind)
+      idMap.set(c.id, nid)
+      return { ...c, id: nid }
+    })
+    const remapTerm = (t: string) => {
+      const [cid, term] = t.split(':')
+      return `${idMap.get(cid)!}:${term}`
+    }
+    const wires = c0.wires.map((w) => ({ id: nextId('w'), a: remapTerm(w.a), b: remapTerm(w.b) }))
+    set({ comps, wires, tool: 'select', selectedId: null, pendingFrom: null, demoOpen: false })
   },
 }))
 
