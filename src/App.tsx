@@ -1314,8 +1314,8 @@ export default function App() {
                 {!isO && numFs.map((f, i) => (
                   <g key={'n' + i}>
                     {/* 当前量程对应的那排数字加深，另一排变浅——解决"数字重复"的观感 */}
-                    <text x={dir(f, R - 20).x} y={dir(f, R - 20).y} textAnchor="middle" fontSize={12} fontWeight={700} fill={hiActive ? '#2a3140' : '#b9c2d4'}>{hiNums[i]}</text>
-                    {!isG && <text x={dir(f, R - 40).x} y={dir(f, R - 40).y} textAnchor="middle" fontSize={10} fontWeight={hiActive ? 400 : 700} fill={hiActive ? '#b9c2d4' : '#2a3140'}>{loNums[i]}</text>}
+                    <text x={dir(f, R - 26).x} y={dir(f, R - 26).y} textAnchor="middle" fontSize={12} fontWeight={700} fill={hiActive ? '#2a3140' : '#b9c2d4'}>{hiNums[i]}</text>
+                    {!isG && <text x={dir(f, R - 46).x} y={dir(f, R - 46).y} textAnchor="middle" fontSize={10} fontWeight={hiActive ? 400 : 700} fill={hiActive ? '#b9c2d4' : '#2a3140'}>{loNums[i]}</text>}
                   </g>
                 ))}
                 <Needle target={needleTarget} CX={CX} CY={CY} R={R} />
