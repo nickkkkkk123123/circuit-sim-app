@@ -102,6 +102,15 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
         const ny = 2 - Math.cos(ang) * 13
         return (
           <>
+            <text
+              x={0} y={-28} textAnchor="middle" fontSize={13} fontWeight={600}
+              fill={Math.abs(galvoI) > 1e-9 ? T.readout : T.label}
+              style={{ cursor: 'pointer' }}
+              onPointerDown={(e) => { e.stopPropagation(); onDialOpen?.(c) }}
+            >
+              {(galvoI * 1000).toFixed(2)}mA
+              <title>点击查看表盘</title>
+            </text>
             <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
             <line x1={0} y1={2} x2={nx} y2={2 + ny} stroke="#c0392b" strokeWidth={2} strokeLinecap="round" />
             <circle cx={0} cy={2} r={2} fill="#c0392b" />
@@ -837,51 +846,83 @@ export default function App() {
 
       {dialFor && (() => {
         // 表盘读数练习弹窗：复刻学生实验电表——双排刻度（上=大量程，下=小量程）、30 小格
+        // 灵敏电流计为特例：中心零位 ±1mA 双向刻度
         const c = s.comps.find((k) => k.id === dialFor)
-        if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter') || c.customRange) return null
+        if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter' && c.kind !== 'galvanometer') || (c.kind !== 'galvanometer' && c.customRange)) return null
         const isV = c.kind === 'voltmeter'
-        const unit = isV ? 'V' : 'A'
-        const val = Math.abs(isV ? result.byComp[c.id]?.dv ?? 0 : result.byComp[c.id]?.current ?? 0)
+        const isG = c.kind === 'galvanometer'
+        const unit = isG ? 'mA' : isV ? 'V' : 'A'
+        const solvedM = result.byComp[c.id]
+        const signedG = isG ? (solvedM?.dv ?? 0) / METER_G_R * 1000 : 0 // 带符号 mA
+        const val = isG ? Math.abs(signedG) : Math.abs(isV ? solvedM?.dv ?? 0 : solvedM?.current ?? 0)
         const R = 100, CX = 140, CY = 148
         const dir = (f: number, r: number) => {
           const deg = (-50 + 100 * f) * Math.PI / 180
           return { x: CX + Math.sin(deg) * r, y: CY - Math.cos(deg) * r }
         }
-        const frac = Math.max(0, Math.min(1, val / c.range))
+        const frac = isG
+          ? Math.max(0, Math.min(1, (signedG / METER_G_IG + 1) / 2)) // -1mA→0，+1mA→1
+          : Math.max(0, Math.min(1, val / c.range))
         const nd = dir(frac, R - 6)
-        const hiNums = isV ? [0, 5, 10, 15] : [0, 1, 2, 3]
-        const loNums = isV ? [0, 1, 2, 3] : [0, 0.2, 0.4, 0.6]
+        const hiNums = isG ? [-1, -0.5, 0, 0.5, 1] : isV ? [0, 5, 10, 15] : [0, 1, 2, 3]
+        const loNums = isG ? ['−1mA', '−0.5', '0', '+0.5', '+1mA'] : isV ? [0, 1, 2, 3] : [0, 0.2, 0.4, 0.6]
+        const numFs = isG ? [0, 0.25, 0.5, 0.75, 1] : [0, 10 / 30, 20 / 30, 1]
         const ticks = []
-        for (let i = 0; i <= 30; i++) {
-          const f = i / 30
-          const major = i % 10 === 0
-          const mid = i % 5 === 0
-          ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major })
+        if (isG) {
+          for (let i = 0; i <= 20; i++) {
+            const f = i / 20
+            const major = i % 5 === 0
+            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid7(f) ? 9 : 5)), major })
+          }
+          function mid7(f: number) { const mA = (f * 2 - 1) * 1000; return Math.abs(mA % 0.5) < 1e-9 }
+        } else {
+          for (let i = 0; i <= 30; i++) {
+            const f = i / 30
+            const major = i % 10 === 0
+            const mid = i % 5 === 0
+            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major })
+          }
         }
-        const nums = [0, 10 / 30, 20 / 30, 1]
+        const numPos = isG ? [0, 0.25, 0.5, 0.75, 1] : [0, 10 / 30, 20 / 30, 1]
         return (
           <div className="dial-overlay" onPointerDown={() => setDialFor(null)}>
             <div className="dial-card" onPointerDown={(e) => e.stopPropagation()}>
-              <h3>{isV ? '电压表' : '电流表'} · 量程 0~{c.range}{unit}</h3>
+              <h3>{isG ? '灵敏电流计 · 量程 −1~+1mA（中心零位）' : `${isV ? '电压表' : '电流表'} · 量程 0~${c.range}${unit}`}</h3>
               <svg width={290} height={168} viewBox="0 0 280 168">
                 <rect x={6} y={2} width={268} height={164} rx={10} fill="#f7f8fa" stroke="#c9d2e0" />
                 {ticks.map((t, i) => (
                   <line key={i} x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#2a3140" strokeWidth={t.major ? 2 : 1} />
                 ))}
-                {nums.map((f, i) => (
+                {(isG ? numFs.map((f, i) => ({ f, hi: hiNums[i], lo: loNums[i] })) : numPos.map((f, i) => ({ f, hi: hiNums[i], lo: loNums[i] }))).map((n, i) => (
                   <g key={i}>
-                    <text x={dir(f, R - 22).x} y={dir(f, R - 22).y} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140">{hiNums[i]}</text>
-                    <text x={dir(f, R - 38).x} y={dir(f, R - 38).y} textAnchor="middle" fontSize={10} fill="#5b6472">{loNums[i]}</text>
+                    <text x={dir(n.f, R - 22).x} y={dir(n.f, R - 22).y} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140">{n.hi}</text>
+                    {!isG && <text x={dir(n.f, R - 38).x} y={dir(n.f, R - 38).y} textAnchor="middle" fontSize={10} fill="#5b6472">{n.lo}</text>}
                   </g>
                 ))}
                 <line x1={CX} y1={CY} x2={nd.x} y2={nd.y} stroke="#c0392b" strokeWidth={2.5} strokeLinecap="round" />
                 <circle cx={CX} cy={CY} r={5} fill="#c0392b" />
-                <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isV ? 'V' : 'A'}</text>
+                <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isG ? 'G' : isV ? 'V' : 'A'}</text>
               </svg>
-              <div className="dial-rows">
-                <span>按 0~{isV ? 15 : 3}{unit} 刻度读：{(val * (isV ? 15 : 3) / c.range).toFixed(isV ? 1 : 2)}{unit}（每小格 {isV ? 0.5 : 0.1}{unit}）</span>
-                <span>按 0~{isV ? 3 : 0.6}{unit} 刻度读：{(val * (isV ? 3 : 0.6) / c.range).toFixed(isV ? 2 : 3)}{unit}（每小格 {isV ? 0.1 : 0.02}{unit}）</span>
-              </div>
+              {isG ? (
+                <div className="dial-rows">
+                  <span>指针{signedG > 0 ? '右偏（电流 + → −）' : signedG < 0 ? '左偏（电流 − → +）' : '居中（无电流）'}</span>
+                  <span>偏转满偏的 {(Math.abs(signedG / METER_G_IG) * 100).toFixed(0)}%{Math.abs(signedG) > METER_G_IG ? ' · ⚠ 超量程' : ''}</span>
+                </div>
+              ) : (
+                <div className="dial-rows">
+                  {isV ? (
+                    <>
+                      <span>按 0~15V 刻度读：{(val * 15 / c.range).toFixed(1)}V（每小格 0.5V）</span>
+                      <span>按 0~3V 刻度读：{(val * 3 / c.range).toFixed(2)}V（每小格 0.1V）</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>按 0~3A 刻度读：{(val * 3 / c.range).toFixed(2)}A（每小格 0.1A）</span>
+                      <span>按 0~0.6A 刻度读：{(val * 0.6 / c.range).toFixed(3)}A（每小格 0.02A）</span>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="dial-val">{val.toFixed(2)}{unit}</div>
               <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
             </div>
