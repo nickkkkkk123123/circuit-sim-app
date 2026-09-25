@@ -153,6 +153,7 @@ export default function App() {
   const [sliderDrag, setSliderDrag] = useState<{ id: string } | null>(null)
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
+  const lastTermAction = useRef<{ term: string; ts: number } | null>(null)
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
 
@@ -245,6 +246,11 @@ export default function App() {
   }
 
   const onTerminalClick = (e: React.PointerEvent, term: string) => {
+    // 防抖：鼠标按键抖动会把一次点击注册成两次 pointerdown——
+    // 在起点上表现为"开始即取消"，在终点上表现为"完成后立刻触发新连线"
+    const now = Date.now()
+    if (lastTermAction.current && lastTermAction.current.term === term && now - lastTermAction.current.ts < 400) return
+    lastTermAction.current = { term, ts: now }
     e.stopPropagation()
     if (!s.pendingFrom) s.startWire(term)
     else s.completeWire(term)
@@ -270,6 +276,10 @@ export default function App() {
   const release = () => {
     setDragging(null)
     setSliderDrag(null)
+    // 拖线式连线：按住端子拖到目标端子上松手即完成（回到起点松手则取消）
+    if (s.pendingFrom && hoverTerm && hoverTerm !== s.pendingFrom) {
+      s.completeWire(hoverTerm)
+    }
     // 抓取导线端点后松手：落在端子上=改接，落在空白=该导线已被删除（保持待连状态）
     if (grabbedEnd) {
       if (hoverTerm) s.completeWire(hoverTerm)
