@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useEditor, STORAGE_KEY } from './store'
+import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
 import { terminalPos, terminalsOf, TERMINAL_OFFSET, type Comp, type CompKind } from './solver/types'
 import { THEME as T } from './theme'
@@ -290,19 +290,25 @@ export default function App() {
     }
     if (s.pendingFrom) {
       setMouse({ x, y }) // 只有连线预览需要逐帧位置
-      let best: string | null = null
-      let bestD = 18
-      for (const c of s.comps) {
-        for (const t of terminalsOf(c)) {
-          const p = terminalPos(c, t)
-          const d = Math.hypot(p.x - x, p.y - y)
-          if (d < bestD) { bestD = d; best = `${c.id}:${t}` }
-        }
-      }
+      const best = snapTerm(x, y)
       setHoverTerm(best) // 只会指向现存元件的端子
     } else if (hoverTerm && !s.comps.some((c) => c.id === hoverTerm.split(':')[0])) {
       setHoverTerm(null) // 悬停的端子所属元件已被删除 → 清除
     }
+  }
+
+  // 事件坐标 → 最近端子（吸附半径 18px）。事件时刻现场计算，不依赖渲染闭包
+  const snapTerm = (x: number, y: number): string | null => {
+    let best: string | null = null
+    let bestD = 18
+    for (const c of editorState().comps) {
+      for (const t of terminalsOf(c)) {
+        const p = terminalPos(c, t)
+        const dd = Math.hypot(p.x - x, p.y - y)
+        if (dd < bestD) { bestD = dd; best = `${c.id}:${t}` }
+      }
+    }
+    return best
   }
 
   const onTerminalClick = (e: React.PointerEvent, term: string) => {
@@ -342,7 +348,7 @@ export default function App() {
     s.select(c.id)
   }
 
-  const release = () => {
+  const release = (e?: React.PointerEvent) => {
     setDragging(null)
     setSliderDrag(null)
     // 开关：没拖远 = 翻转通断
@@ -351,13 +357,22 @@ export default function App() {
       setSwitchPress(null)
       return
     }
-    // 拖线式连线：按住端子拖到目标端子上松手即完成（回到起点松手则取消）
-    if (s.pendingFrom && hoverTerm && hoverTerm !== s.pendingFrom) {
-      s.completeWire(hoverTerm)
+    // 连线完成一律以"事件时刻的 store 状态 + 事件坐标现场吸附"为准——
+    // 渲染闭包里的 pendingFrom/hoverTerm 可能是过期的（快速连点时会撞出幽灵连线）
+    const st = editorState()
+    if (st.pendingFrom && e) {
+      const { x, y } = toCanvas(e)
+      const term = snapTerm(x, y)
+      if (term && term !== st.pendingFrom) st.completeWire(term)
+      return
     }
     // 抓取导线端点后松手：落在端子上=改接，落在空白=该导线已被删除（保持待连状态）
     if (grabbedEnd) {
-      if (hoverTerm) s.completeWire(hoverTerm)
+      if (e) {
+        const p = toCanvas(e)
+        const term = snapTerm(p.x, p.y)
+        if (term) editorState().completeWire(term)
+      }
       setGrabbedEnd(null)
     }
   }

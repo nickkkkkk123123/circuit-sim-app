@@ -52,6 +52,7 @@ interface EditorState extends Circuit {
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
+
   comps: saved?.comps ?? [],
   wires: saved?.wires ?? [],
   tool: 'select',
@@ -158,7 +159,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const comps: Comp[] = [
       { id: 'sw-1', kind: 'switch', x: 350, y: 200, rot: 0, closed: true },
       { id: 'bulb-1', kind: 'bulb', x: 650, y: 200, rot: 0, r: 10, ratedP: 3.6 },
-      { id: 'bat-1', kind: 'battery', x: 350, y: 500, rot: 0, emf: 6, r: 0.5 },
+      { id: 'bat-1', kind: 'battery', x: 350, y: 500, rot: 0, emf: 6, r: 0.5, expanded: false },
       { id: 'res-1', kind: 'resistor', x: 644, y: 500, rot: 0, r: 15 },
     ]
     const wires: Wire[] = [
@@ -171,3 +172,6 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ comps, wires, tool: 'select', selectedId: null, pendingFrom: null })
   },
 }))
+
+// 事件处理器内读取最新状态的入口（避免渲染闭包读到过期的 pendingFrom 等瞬态）
+export const editorState = () => useEditor.getState()
