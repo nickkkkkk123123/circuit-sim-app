@@ -40,7 +40,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -50,6 +50,7 @@ function CompSymbol({ c, selected, solved, ohmReading, onPointerDown, onContextM
   onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onDialOpen?: (c: Comp) => void
   ohmReading?: number
+  rheoLabel?: string
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -270,7 +271,9 @@ function CompSymbol({ c, selected, solved, ohmReading, onPointerDown, onContextM
     : isMeter ? (c.ideal ? '理想' : '实际①')
     : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
-    : c.kind === 'rheostat' ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω`
+    : c.kind === 'rheostat' ? (c.expanded
+        ? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`
+        : rheoLabel ?? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`)
     : c.closed ? '闭合' : '断开'
   const readout =
     !isMeter && !isGalvo && !isOhm && solved && solved.current > 1e-6
@@ -678,12 +681,22 @@ export default function App() {
             )
           })()}
 
-          {s.comps.map((c) => (
+          {s.comps.map((c) => {
+            // 紧凑态变阻器：按实际接线显示有效接入阻值（接 a=左段，接 b=右段，都接=全阻值）
+            let rheoLabel: string | undefined
+            if (c.kind === 'rheostat' && !c.expanded) {
+              const wa = s.wires.some((w) => w.a === `${c.id}:a` || w.b === `${c.id}:a`)
+              const wb = s.wires.some((w) => w.a === `${c.id}:b` || w.b === `${c.id}:b`)
+              const eff = wa && wb ? c.Rmax : wa ? c.pos * c.Rmax : wb ? (1 - c.pos) * c.Rmax : null
+              rheoLabel = `P ${Math.round(c.pos * 100)}%` + (eff !== null ? ` · 接入 ${eff.toFixed(2)}Ω` : ` · Rmax ${c.Rmax}Ω`)
+            }
+            return (
             <g key={c.id}>
               <CompSymbol
                 c={c}
                 selected={s.selectedId === c.id}
                 solved={result.byComp[c.id]}
+                rheoLabel={rheoLabel}
                 onPointerDown={(e) => onCompBodyPointerDown(e, c)}
                 onSliderPointerDown={onSliderPointerDown}
                 onSwitchPointerDown={onSwitchPointerDown}
@@ -721,7 +734,8 @@ export default function App() {
                 )
               })}
             </g>
-          ))}
+          )
+          })}
           </g>
         </svg>
       </main>
