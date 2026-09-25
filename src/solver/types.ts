@@ -42,6 +42,7 @@ export interface Voltmeter extends BaseComp {
   range: number // 量程 V：3 或 15（学生表双档）；customRange 开启时可任意
   customRange?: boolean // 自定义量程模式：可任意设量程，但禁用表盘读数练习
   expanded?: boolean // 展开内部结构：表头 G 串联分压电阻（仅实际模式）
+  posts?: MeterPosts // 两根表笔各接哪个接线柱（缺省 = 黑笔−、红笔小量程，兼容旧存档）
 }
 
 export interface Ammeter extends BaseComp {
@@ -51,6 +52,23 @@ export interface Ammeter extends BaseComp {
   range: number // 量程 A：0.6 或 3（学生表双档）；customRange 开启时可任意
   customRange?: boolean // 自定义量程模式
   expanded?: boolean // 展开内部结构：表头 G 并联分流电阻（仅实际模式）
+  posts?: MeterPosts // 同电压表
+}
+
+export type MeterPost = 'neg' | 'low' | 'high'
+export interface MeterPosts { black: MeterPost; red: MeterPost }
+
+/**
+ * 学生表接线有效性：黑笔接 − 且红笔接任一量程柱 → 返回当前量程；
+ * 否则（红黑都挤在量程柱 / 红笔悬空在 − 之外）= 表笔没接好，返回 null（支路断开、无读数）
+ * 缺省 posts = 旧存档兼容，视为已接好
+ */
+export function meterRangeOf(c: Voltmeter | Ammeter): number | null {
+  if (!c.posts) return c.range
+  const { black, red } = c.posts
+  if (black === 'neg' && red === 'low') return c.kind === 'voltmeter' ? 3 : 0.6
+  if (black === 'neg' && red === 'high') return c.kind === 'voltmeter' ? 15 : 3
+  return null
 }
 
 export interface Galvanometer extends BaseComp {

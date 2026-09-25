@@ -286,3 +286,11 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   position: fixed; z-index: 60; pointer-events: none;
   transform: translate(-50%, -50%); cursor: grabbing;
 }
+
+/* 表笔环：黑/红两色，趴在各自接的接线柱上 */
+.lug.black { border-color: #2c3038; background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.25), rgba(0,0,0,0.15)); }
+.lug.red { border-color: #d84a4a; }
+.lug.black:hover, .lug.red:hover { border-color: var(--border-hot); }
+
+/* 拖动中的表笔线（全屏覆盖，pointer-events 穿透） */
+.dial-cables { position: fixed; inset: 0; z-index: 55; pointer-events: none; }

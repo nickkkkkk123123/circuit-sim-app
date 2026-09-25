@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Circuit, Comp, CompKind, Wire } from './solver/types'
+import type { Circuit, Comp, CompKind, Wire, MeterPosts } from './solver/types'
 import { defaultComp } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 
@@ -42,7 +42,7 @@ interface EditorState extends Circuit {
   remove: (id: string) => void
   toggleSwitch: (id: string) => void
   setExpanded: (id: string, expanded: boolean) => boolean
-  updateParam: (id: string, key: string, value: number | boolean) => void
+  updateParam: (id: string, key: string, value: number | boolean | MeterPosts) => void
   select: (id: string | null) => void
   selectWire: (id: string | null) => void
   removeWire: (id: string) => void

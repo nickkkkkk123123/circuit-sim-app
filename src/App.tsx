@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, type Comp, type CompKind } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, type Comp, type CompKind, type MeterPosts } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { THEME as T } from './theme'
 
@@ -313,7 +313,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
-    : isMeter ? `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`
+    : isMeter ? (meterRangeOf(c) === null ? '⚠ 表笔未接好' : `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`)
     : isLed ? (ledLit ? `导通 · ${((solved?.current ?? 0) * 1000).toFixed(0)}mA` : '截止')
     : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
@@ -444,7 +444,7 @@ export default function App() {
   // 表盘浮窗：非模态（开着可继续实验）、可拖动；V/A 表带三接线柱拖环选量程
   const [dialPos, setDialPos] = useState<{ x: number; y: number } | null>(null)
   const dialDragRef = useRef<{ ox: number; oy: number } | null>(null)
-  const [lugDrag, setLugDrag] = useState<{ x: number; y: number } | null>(null)
+  const [lugDrag, setLugDrag] = useState<{ lead: 'black' | 'red'; x: number; y: number } | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const gRef = useRef<SVGGElement | null>(null)
   const toCanvas = useCursorPos(svgRef, gRef)
@@ -540,18 +540,30 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [s])
 
-  // 接线环拖拽：跟随指针，松手落点决定量程（不依赖 capture，避免吞 click 的坑）
+  // 表笔拖拽：跟随指针，靠近接线柱吸附；松手落到柱上才算接好
   useEffect(() => {
     if (!lugDrag) return
-    const move = (e: PointerEvent) => setLugDrag({ x: e.clientX, y: e.clientY })
+    const move = (e: PointerEvent) => setLugDrag({ ...lugDrag, x: e.clientX, y: e.clientY })
     const up = (e: PointerEvent) => {
-      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
-      const post = el?.closest('[data-range]') as HTMLElement | null
-      if (post && dialFor) {
-        const r = Number(post.dataset.range)
+      // 吸附判定：56px 内最近的接线柱，且不能已被另一根表笔占用
+      let best: { post: string; d: number } | null = null
+      for (const pin of document.querySelectorAll('.dial-float [data-post]')) {
+        const r = pin.getBoundingClientRect()
+        const d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2))
+        if (d < 56 && (!best || d < best.d)) best = { post: pin.getAttribute('data-post')!, d }
+      }
+      if (best && dialFor) {
         const st = editorState()
         const cur = st.comps.find((k) => k.id === dialFor)
-        if (cur && 'range' in cur && cur.range !== r) st.updateParam(dialFor, 'range', r)
+        if (cur && (cur.kind === 'voltmeter' || cur.kind === 'ammeter')) {
+          const ps: MeterPosts = cur.posts ?? { black: 'neg', red: cur.range === (cur.kind === 'voltmeter' ? 15 : 3) ? 'high' : 'low' }
+          const otherLead = lugDrag.lead === 'black' ? 'red' : 'black'
+          if (ps[otherLead] !== best.post) {
+            st.updateParam(dialFor, 'posts', { ...ps, [lugDrag.lead]: best.post })
+            // 表笔位置变了，量程跟着变（红笔决定量程；黑笔只在 − 时才有效）
+            if (lugDrag.lead === 'red') st.updateParam(dialFor, 'range', best.post === 'high' ? (cur.kind === 'voltmeter' ? 15 : 3) : (cur.kind === 'voltmeter' ? 3 : 0.6))
+          }
+        }
       }
       setLugDrag(null)
     }
@@ -1057,7 +1069,11 @@ export default function App() {
                 <>
                   <label>量程 0~{selected.range}{unit}
                     <button className="wide" disabled={selected.customRange}
-                      onClick={() => s.updateParam(selected.id, 'range', selected.range === low ? high : low)}>
+                      onClick={() => {
+                        const next = selected.range === low ? high : low
+                        s.updateParam(selected.id, 'range', next)
+                        s.updateParam(selected.id, 'posts', { black: 'neg', red: next === high ? 'high' : 'low' })
+                      }}>
                       切换量程（{low}{unit} ↔ {high}{unit}）
                     </button>
                   </label>
@@ -1224,7 +1240,7 @@ export default function App() {
           }
         }
         return (
-          <div className="dial-float" style={dialPos ? { left: dialPos.x, top: dialPos.y } : undefined}>
+          <div className="dial-float" style={dialPos ? { left: dialPos.x, top: dialPos.y, right: 'auto' } : undefined}>
             <div
               className="dial-head"
               onPointerDown={(e) => {
@@ -1293,44 +1309,55 @@ export default function App() {
                 </div>
               )}
               {(() => {
-                // 学生表三接线柱：− 公共端固定接电路，量程柱由接线环选择（拖环或点柱切换量程）
+                // 学生表三接线柱 + 两根表笔：黑笔默认在 −、红笔在量程柱；都可拖动，靠近吸附。
+                // 有效接法 = 黑笔在 − 且红笔在量程柱；否则表笔没接好 → 支路断开（画布标签会提示）
                 if (isG || isO) return null
-                const ranges = isV ? [3, 15] : [0.6, 3]
+                const low = isV ? 3 : 0.6
+                const high = isV ? 15 : 3
+                const ps: MeterPosts = c.posts ?? { black: 'neg', red: c.range === high ? 'high' : 'low' }
+                const postList: [string, string][] = [['neg', '− 公共'], ['low', `${low}${unit}`], ['high', `${high}${unit}`]]
                 return (
                   <div className="dial-posts">
-                    <div className="post common"><span className="post-pin black" /><label>− 公共</label></div>
-                    {ranges.map((r) => (
-                      <div
-                        key={r}
-                        className={'post' + (c.range === r ? ' active' : '')}
-                        data-range={r}
-                        onClick={() => {
-                          const cur = editorState().comps.find((k) => k.id === c.id)
-                          if (cur && 'range' in cur && cur.range !== r) s.updateParam(c.id, 'range', r)
-                        }}
-                      >
-                        <span className="post-pin" />
-                        <label>{r}{unit}</label>
-                        {c.range === r && !lugDrag && (
-                          <span
-                            className="lug"
-                            title="按住拖到另一个量程柱"
-                            onPointerDown={(e) => {
-                              e.preventDefault()
-                              setLugDrag({ x: e.clientX, y: e.clientY })
-                            }}
-                          />
-                        )}
+                    {postList.map(([p, lbl]) => (
+                      <div key={p} className={'post' + (ps.black === p || ps.red === p ? ' active' : '')} data-post={p}>
+                        <span className={'post-pin' + (p === 'neg' ? ' black' : '')} />
+                        <label>{lbl}</label>
+                        {(['black', 'red'] as const).map((lead) => (
+                          ps[lead] === p && !(lugDrag && lugDrag.lead === lead) && (
+                            <span key={lead} className={'lug ' + lead} title="按住拖动表笔，靠近接线柱松手吸附"
+                              onPointerDown={(e) => { e.preventDefault(); setLugDrag({ lead, x: e.clientX, y: e.clientY }) }} />
+                          )
+                        ))}
                       </div>
                     ))}
                   </div>
                 )
               })()}
-              <p className="dial-hint">{isG || isO ? '' : '拖动接线环到另一个量程柱（或点击接线柱）切换量程；开着窗口也能继续连线实验'}</p>
-              <div className="dial-val">{isO ? fmtOhm(val) : val.toFixed(2)}{unit}</div>
+              <p className="dial-hint">
+                {isG || isO ? '' : meterRangeOf(c) === null
+                  ? '⚠ 表笔没接好：黑笔接 − 公共端，红笔接任一量程柱'
+                  : '两根表笔都能拖动：靠近接线柱松手吸附；黑笔接 −，红笔接量程柱。开着窗口也能继续实验'}
+              </p>
+              <div className="dial-val">{!isG && !isO && meterRangeOf(c) === null ? '--' : (isO ? fmtOhm(val) : val.toFixed(2))}{unit}</div>
               <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
             </div>
-            {lugDrag && <span className="lug floating" style={{ left: lugDrag.x, top: lugDrag.y }} />}
+            {lugDrag && (() => {
+              // 拖动中画一条表笔线：从表盘底部锚点到指针位置，像真的拖着线
+              const svgEl = document.querySelector('.dial-float svg')
+              if (!svgEl) return null
+              const r = svgEl.getBoundingClientRect()
+              const ax = r.left + r.width * (lugDrag.lead === 'black' ? 0.38 : 0.62)
+              const ay = r.bottom + 4
+              return (
+                <svg className="dial-cables">
+                  <path
+                    d={`M ${ax} ${ay} Q ${(ax + lugDrag.x) / 2} ${(ay + lugDrag.y) / 2 + 40} ${lugDrag.x} ${lugDrag.y}`}
+                    stroke={lugDrag.lead === 'red' ? '#d84a4a' : '#3a3f4c'} strokeWidth={2.5} fill="none" strokeLinecap="round"
+                  />
+                </svg>
+              )
+            })()}
+            {lugDrag && <span className={'lug floating ' + lugDrag.lead} style={{ left: lugDrag.x, top: lugDrag.y }} />}
           </div>
         )
       })()}
@@ -1366,7 +1393,7 @@ export default function App() {
       {expInfo && (
         <div
           className="exp-panel"
-          style={expPos ? { left: expPos.x, top: expPos.y } : undefined}
+          style={expPos ? { left: expPos.x, top: expPos.y, right: 'auto' } : undefined}
         >
           <div
             className="exp-panel-head"
