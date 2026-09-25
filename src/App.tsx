@@ -86,20 +86,16 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
         )
       })()}
       {isMeter && (!c.expanded || c.ideal) && (() => {
-        // 紧凑态表盘：量程内线性偏转（-135°..135°），负值钳在 0
-        const frac = Math.max(0, Math.min(1, meterVal / c.range))
-        const ang = (-135 + 270 * frac) * Math.PI / 180
-        const nx = Math.sin(ang) * 13
-        const ny = 2 - Math.cos(ang) * 13
+        // 经典电路图符号：圆 + V/A，测量值显示在符号上方
         return (
           <>
-            <circle r={20} fill="#e9edf5" stroke={selected ? T.inkSelected : '#8a94a6'} strokeWidth={2.5} />
-            <line x1={-13} y1={-2} x2={13} y2={-2} stroke="#9aa5b8" strokeWidth={1} />
-            <text x={-14} y={-7} fontSize={7} fill="#5b6472">0</text>
-            <text x={9} y={-7} fontSize={7} fill="#5b6472">{c.range}</text>
-            <line x1={0} y1={2} x2={nx} y2={ny} stroke="#c0392b" strokeWidth={2} strokeLinecap="round" />
-            <circle cx={0} cy={2} r={2} fill="#c0392b" />
-            <text x={0} y={15} textAnchor="middle" fontSize={11} fontWeight={700} fill="#2a3140">{isVoltmeter ? 'V' : 'A'}</text>
+            <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
+            <text x={0} y={8} textAnchor="middle" fontSize={20} fontWeight={700} fill={stroke}>{isVoltmeter ? 'V' : 'A'}</text>
+            <text x={0} y={-28} textAnchor="middle" fontSize={13} fontWeight={600}
+              fill={meterVal > 1e-9 ? T.readout : T.label}>
+              {meterVal.toFixed(2)}{isVoltmeter ? 'V' : 'A'}
+            </text>
+            {!c.ideal && <text x={0} y={34} textAnchor="middle" fontSize={10} fill={T.label}>实际①</text>}
           </>
         )
       })()}
@@ -197,7 +193,7 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
-    : isMeter ? `${meterVal.toFixed(2)}${isVoltmeter ? 'V' : 'A'}` + (c.ideal ? '' : '①')
+    : isMeter ? (c.ideal ? '理想' : '实际①')
     : c.kind === 'rheostat' ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω`
     : c.closed ? '闭合' : '断开'
   const readout =
@@ -672,10 +668,6 @@ export default function App() {
               const rStep = isV ? 100 : 0.01
               return (
                 <>
-                  <label>量程 0~{selected.range}{unit}
-                    <input type="range" min={isV ? 3 : 0.6} max={isV ? 20 : 5} step={isV ? 1 : 0.1} value={selected.range}
-                      onChange={(e) => s.updateParam(selected.id, 'range', +e.target.value)} />
-                  </label>
                   <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <input type="checkbox" checked={selected.ideal}
                       onChange={(e) => {
