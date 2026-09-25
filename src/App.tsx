@@ -152,7 +152,8 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
           fill="transparent"
         />
         {c.kind === 'switch' && (
-          <rect x={-40} y={-30} width={80} height={60} fill="transparent" onDoubleClick={() => onToggle?.(c)} />
+          // 单击通断（拖动离开热区则视为移动，不翻转）——不再依赖双击
+          <rect x={-40} y={-30} width={80} height={60} fill="transparent" onClick={() => onToggle?.(c)} />
         )}
         {c.rot === 0 && body}
         {c.rot === 90 && <g transform="rotate(90)">{body}</g>}
