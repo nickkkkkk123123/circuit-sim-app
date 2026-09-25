@@ -19,7 +19,53 @@
   --danger: #e08a97;
   --danger-line: #4a2a33;
   --grid-dot: #1c2130;
+  /* SVG 世界坐标系的颜色（theme.ts 引用） */
+  --ink-selected: #8b93ff;
+  --terminal-idle: #4a5578;
+  --terminal-hot: #6fd39a;
+  --terminal-rim: #0d1017;
+  --wire-idle: #39415a;
+  --wire-live: #ffd76a;
+  --wire-live-under: #6b5416;
+  --preview: #6fd39a;
+  --svg-dim: #55617e;
+  --meter-face: #e9edf5;
+  /* 侧栏 */
+  --sb-width: 200px;
 }
+
+[data-theme='light'] {
+  --bg: #eef1f6;
+  --ink: #232838;
+  --panel: #ffffff;
+  --panel-line: #dde2ec;
+  --panel-raise: #f2f4f9;
+  --panel-hover: #e8ecf4;
+  --panel-active: #dfe6ff;
+  --border: #d5dbe8;
+  --border-hot: #9aa8d0;
+  --muted: #5a6375;
+  --faint: #8a92a5;
+  --ghost: #a5adbd;
+  --readout: #178a52;
+  --warn: #b06f1f;
+  --danger: #c25062;
+  --danger-line: #e8c4cb;
+  --grid-dot: #c3cad8;
+  --ink-selected: #4c5ac0;
+  --terminal-idle: #8b96ad;
+  --terminal-hot: #1fa864;
+  --terminal-rim: #ffffff;
+  --wire-idle: #9aa5b8;
+  --wire-live: #d8a521;
+  --wire-live-under: #c69a2a;
+  --preview: #1fa864;
+  --svg-dim: #b6bfd0;
+  --meter-face: #ffffff;
+}
+
+/* 主题切换的柔和过渡（不干扰拖拽/滚轮） */
+body, .palette, .inspector, .stage { transition: background 0.3s ease, border-color 0.3s ease; }
 
 * { box-sizing: border-box; margin: 0; }
 html, body, #root { height: 100%; }
@@ -28,9 +74,31 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .app { display: flex; height: 100%; user-select: none; -webkit-user-select: none; }
 
 .palette {
-  width: 200px; padding: 16px 14px; background: var(--panel);
+  width: var(--sb-width); padding: 16px 14px; background: var(--panel);
   border-right: 1px solid var(--panel-line); display: flex; flex-direction: column; gap: 8px;
+  overflow: hidden; flex: none; min-width: 0;
+  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
 }
+.palette.resizing { transition: background 0.3s ease; }
+.pal-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.pal-head h1 { flex: 1; }
+.icon-btn {
+  width: 26px; height: 26px; border-radius: 6px; flex: none; cursor: pointer;
+  background: var(--panel-raise); border: 1px solid var(--border); color: var(--muted);
+  font-size: 13px; line-height: 1; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.icon-btn:hover { background: var(--panel-hover); border-color: var(--border-hot); color: var(--ink); }
+.grip {
+  width: 6px; cursor: col-resize; flex: none;
+  background: transparent; border-left: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.grip:hover { background: var(--panel-active); border-left-color: var(--accent); }
+.sb-reopen {
+  position: absolute; left: 10px; top: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 5;
+}
+.mini-svg { display: block; }
+.palette .hint, .palette .tips { white-space: nowrap; }
 .palette h1 { font-size: 17px; font-weight: 700; letter-spacing: 1px; padding-bottom: 10px; border-bottom: 1px solid var(--panel-line); margin-bottom: 2px; }
 .palette .hint { font-size: 11px; color: var(--faint); margin-bottom: 6px; }
 .palette button {

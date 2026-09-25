@@ -30,20 +30,6 @@ const KIND_NAME: Record<CompKind, string> = {
   switch: '开关',
 }
 
-// 元件库色点：一眼分类（电源黄/表绿蓝橙/控制灰紫）
-const PALETTE_DOT: Record<CompKind, string> = {
-  battery: '#f2c14e',
-  resistor: '#9aa5b8',
-  rheostat: '#7aa2ff',
-  voltmeter: '#6fd39a',
-  ammeter: '#ffb066',
-  galvanometer: '#e08ae0',
-  ohmmeter: '#8ad0e0',
-  spdt: '#c9a2ff',
-  led: '#ff7b7b',
-  bulb: '#ffd76a',
-  switch: '#a8b4cc',
-}
 
 function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: React.RefObject<SVGGElement | null>) {
   return (e: React.PointerEvent | React.MouseEvent | WheelEvent) => {
@@ -370,6 +356,63 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   )
 }
 
+/** 元件库缩略图：按元件类型画迷你符号（跟随主题变量） */
+function MiniSymbol({ kind }: { kind: CompKind }) {
+  const st = { stroke: 'var(--ink)', strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const }
+  const dot = { fill: 'var(--ink)' }
+  return (
+    <svg className="mini-svg" width={46} height={30} viewBox="-32 -24 64 48" aria-hidden>
+      {kind === 'battery' && (<>
+        <line x1={-2} y1={-12} x2={-2} y2={12} {...st} strokeWidth={3} />
+        <line x1={6} y1={-6} x2={6} y2={6} {...st} strokeWidth={5} />
+        <line x1={-24} y1={0} x2={-2} y2={0} {...st} />
+        <line x1={6} y1={0} x2={24} y2={0} {...st} />
+      </>)}
+      {kind === 'resistor' && (<>
+        <rect x={-14} y={-8} width={28} height={16} rx={2} {...st} />
+        <line x1={-24} y1={0} x2={-14} y2={0} {...st} />
+        <line x1={14} y1={0} x2={24} y2={0} {...st} />
+      </>)}
+      {kind === 'rheostat' && (<>
+        <rect x={-14} y={2} width={28} height={12} rx={2} {...st} />
+        <line x1={-24} y1={8} x2={-14} y2={8} {...st} />
+        <line x1={14} y1={8} x2={24} y2={8} {...st} />
+        <line x1={0} y1={-12} x2={0} y2={2} {...st} />
+        <polygon points="0,4 -4,-3 4,-3" {...dot} />
+      </>)}
+      {(kind === 'voltmeter' || kind === 'ammeter' || kind === 'ohmmeter' || kind === 'galvanometer') && (<>
+        <circle r={13} {...st} />
+        <text x={0} y={5} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--ink)">
+          {kind === 'voltmeter' ? 'V' : kind === 'ammeter' ? 'A' : kind === 'ohmmeter' ? 'Ω' : 'G'}
+        </text>
+      </>)}
+      {kind === 'spdt' && (<>
+        <circle cx={-10} cy={-10} r={2.5} {...dot} />
+        <circle cx={10} cy={-10} r={2.5} {...dot} />
+        <circle cx={0} cy={12} r={2.5} {...dot} />
+        <line x1={0} y1={12} x2={0} y2={4} {...st} />
+        <line x1={0} y1={4} x2={-9} y2={-8} {...st} />
+      </>)}
+      {kind === 'led' && (<>
+        <polygon points="-10,-8 6,0 -10,8" {...st} />
+        <line x1={6} y1={-8} x2={6} y2={8} {...st} strokeWidth={2.5} />
+        <line x1={-22} y1={0} x2={-10} y2={0} {...st} />
+        <line x1={6} y1={0} x2={22} y2={0} {...st} />
+      </>)}
+      {kind === 'bulb' && (<>
+        <circle r={11} {...st} />
+        <line x1={-7} y1={-7} x2={7} y2={7} {...st} />
+        <line x1={7} y1={-7} x2={-7} y2={7} {...st} />
+      </>)}
+      {kind === 'switch' && (<>
+        <circle cx={-10} cy={4} r={2.5} {...dot} />
+        <circle cx={10} cy={4} r={2.5} {...dot} />
+        <line x1={-10} y1={4} x2={10} y2={4} {...st} />
+      </>)}
+    </svg>
+  )
+}
+
 export default function App() {
   const s = useEditor()
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -382,12 +425,41 @@ export default function App() {
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
   const lastTermAction = useRef<{ term: string; ts: number } | null>(null)
   const [dialFor, setDialFor] = useState<string | null>(null) // 表盘读数练习弹窗（元件 id）
+  // 主题与侧栏
+  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
+    (localStorage.getItem('circuit-theme') as 'dark' | 'light') || 'dark')
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('circuit-theme', theme)
+  }, [theme])
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+  const [sbCollapsed, setSbCollapsed] = useState(false)
+  const [sbWidth, setSbWidth] = useState(200)
+  const [sbResizing, setSbResizing] = useState(false)
+  const gripDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const sx = e.clientX
+    const w0 = sbWidth
+    const move = (ev: PointerEvent) => {
+      setSbResizing(true)
+      setSbWidth(Math.min(360, Math.max(170, w0 + ev.clientX - sx)))
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      setTimeout(() => setSbResizing(false), 0)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
   // 画布视图：滚轮缩放（以光标为中心）+ 空白处拖动平移，按 0 复位
   const [view, setViewState] = useState({ scale: 1, tx: 0, ty: 0 })
   const viewRef = useRef(view)
-  const applyView = (v: { scale: number; tx: number; ty: number }) => {
+  const [viewAnim, setViewAnim] = useState(false)
+  const applyView = (v: { scale: number; tx: number; ty: number }, anim = false) => {
     viewRef.current = v
     setViewState(v)
+    setViewAnim(anim)
   }
   useEffect(() => {
     const el = gRef.current ?? svgRef.current
@@ -421,7 +493,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') s.cancelWire()
-      if (e.key === '0') applyView({ scale: 1, tx: 0, ty: 0 })
+      if (e.key === '0') applyView({ scale: 1, tx: 0, ty: 0 }, true)
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (s.selectedWire) s.removeWire(s.selectedWire)
         else if (s.selectedId) s.remove(s.selectedId)
@@ -615,7 +687,7 @@ export default function App() {
       scale: viewRef.current.scale * k,
       tx: cx - (cx - viewRef.current.tx) * k,
       ty: cy - (cy - viewRef.current.ty) * k,
-    })
+    }, true)
   }
 
   const palette: { kind: CompKind; label: string }[] = [
@@ -637,8 +709,22 @@ export default function App() {
 
   return (
     <div className="app">
-      <aside className="palette">
-        <h1>电路实验台</h1>
+      {!sbCollapsed && <div className="grip" onPointerDown={gripDown} />}
+      {sbCollapsed && (
+        <div className="sb-reopen">
+          <button className="icon-btn" onClick={() => setSbCollapsed(false)} title="展开侧栏">⇥</button>
+          <button className="icon-btn" onClick={toggleTheme} title="切换主题">{theme === 'dark' ? '☀' : '🌙'}</button>
+        </div>
+      )}
+      <aside
+        className={`palette${sbResizing ? ' resizing' : ''}`}
+        style={{ width: sbCollapsed ? 0 : sbWidth, borderWidth: sbCollapsed ? 0 : undefined }}
+      >
+        <div className="pal-head">
+          <h1>电路实验台</h1>
+          <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? '☀' : '🌙'}</button>
+          <button className="icon-btn" onClick={() => setSbCollapsed(true)} title="收起侧栏">⇤</button>
+        </div>
         <p className="hint">点击元件后在画布点击放置</p>
         {palette.map((p) => (
           <button
@@ -646,7 +732,7 @@ export default function App() {
             className={s.tool === p.kind ? 'active' : ''}
             onClick={() => s.setTool(s.tool === p.kind ? 'select' : p.kind)}
           >
-            <span className="dot" style={{ background: PALETTE_DOT[p.kind] }} />
+            <MiniSymbol kind={p.kind} />
             {p.label}
           </button>
         ))}
@@ -677,7 +763,15 @@ export default function App() {
               <circle cx={1} cy={1} r={1} fill="var(--grid-dot)" />
             </pattern>
           </defs>
-          <g ref={gRef} transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
+          <g
+            ref={gRef}
+            style={{
+              transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`,
+              transformBox: 'view-box',
+              transformOrigin: '0 0',
+              transition: viewAnim ? 'transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+            }}
+          >
           <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#grid)" />
 
           {s.wires.map((w) => {
@@ -815,7 +909,7 @@ export default function App() {
         <div className="zoom-ctl">
           <button onClick={() => zoomBy(1.25)} title="放大">＋</button>
           <button onClick={() => zoomBy(1 / 1.25)} title="缩小">－</button>
-          <button onClick={() => applyView({ scale: 1, tx: 0, ty: 0 })} title="复位视图">⌂</button>
+          <button onClick={() => applyView({ scale: 1, tx: 0, ty: 0 }, true)} title="复位视图">⌂</button>
         </div>
       </main>
 
