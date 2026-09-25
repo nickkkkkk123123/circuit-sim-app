@@ -30,6 +30,21 @@ const KIND_NAME: Record<CompKind, string> = {
   switch: '开关',
 }
 
+// 元件库色点：一眼分类（电源黄/表绿蓝橙/控制灰紫）
+const PALETTE_DOT: Record<CompKind, string> = {
+  battery: '#f2c14e',
+  resistor: '#9aa5b8',
+  rheostat: '#7aa2ff',
+  voltmeter: '#6fd39a',
+  ammeter: '#ffb066',
+  galvanometer: '#e08ae0',
+  ohmmeter: '#8ad0e0',
+  spdt: '#c9a2ff',
+  led: '#ff7b7b',
+  bulb: '#ffd76a',
+  switch: '#a8b4cc',
+}
+
 function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: React.RefObject<SVGGElement | null>) {
   return (e: React.PointerEvent | React.MouseEvent | WheelEvent) => {
     // 优先用世界坐标系容器（g）的 CTM——它包含缩放/平移变换；svg 自身的 CTM 只有 viewBox 映射
@@ -593,6 +608,16 @@ export default function App() {
     }
   }
 
+  const zoomBy = (factor: number) => {
+    const k = Math.min(3, Math.max(0.4, viewRef.current.scale * factor)) / viewRef.current.scale
+    const cx = W / 2, cy = H / 2
+    applyView({
+      scale: viewRef.current.scale * k,
+      tx: cx - (cx - viewRef.current.tx) * k,
+      ty: cy - (cy - viewRef.current.ty) * k,
+    })
+  }
+
   const palette: { kind: CompKind; label: string }[] = [
     { kind: 'battery', label: '电源' },
     { kind: 'resistor', label: '定值电阻' },
@@ -621,11 +646,12 @@ export default function App() {
             className={s.tool === p.kind ? 'active' : ''}
             onClick={() => s.setTool(s.tool === p.kind ? 'select' : p.kind)}
           >
+            <span className="dot" style={{ background: PALETTE_DOT[p.kind] }} />
             {p.label}
           </button>
         ))}
         <div className="divider" />
-        <button onClick={s.loadDemo}>演示电路</button>
+        <button onClick={s.loadDemo}><span className="dot" style={{ background: '#5e6ad2' }} />演示电路</button>
         <p className="tips">
           按住端子拖到另一端松手即连线<br />
           （或点两个端子）· Esc 取消连线<br />
@@ -786,6 +812,11 @@ export default function App() {
           })}
           </g>
         </svg>
+        <div className="zoom-ctl">
+          <button onClick={() => zoomBy(1.25)} title="放大">＋</button>
+          <button onClick={() => zoomBy(1 / 1.25)} title="缩小">－</button>
+          <button onClick={() => applyView({ scale: 1, tx: 0, ty: 0 })} title="复位视图">⌂</button>
+        </div>
       </main>
 
       <aside className="inspector">
