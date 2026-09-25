@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer'
 
 export interface BaseComp {
   id: string
@@ -53,10 +53,16 @@ export interface Ammeter extends BaseComp {
   expanded?: boolean // 展开内部结构：表头 G 并联分流电阻（仅实际模式）
 }
 
-// 灵敏电流计表头（G）：内阻固定 100Ω，改装电阻由总内阻反推
-export const METER_G_R = 100
+export interface Galvanometer extends BaseComp {
+  kind: 'galvanometer'
+  // 灵敏电流计：内阻 Rg（100Ω）、量程 ±Ig（1mA）固定；电流方向决定指针偏转方向
+}
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter
+// 灵敏电流计表头（G）：内阻固定 100Ω，量程 ±1mA（双向偏转），也是电表改装的核心部件
+export const METER_G_R = 100
+export const METER_G_IG = 0.001
+
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -86,6 +92,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   rheostat: 32,
   voltmeter: 24,
   ammeter: 24,
+  galvanometer: 24,
 }
 
 // 展开态滑动变阻器：金属杆距中心的高度
@@ -138,5 +145,7 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0, r: 3000, ideal: true, range: 3, customRange: false }
     case 'ammeter':
       return { id, kind, x, y, rot: 0, r: 0.1, ideal: true, range: 0.6, customRange: false }
+    case 'galvanometer':
+      return { id, kind, x, y, rot: 0 }
   }
 }

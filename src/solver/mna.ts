@@ -5,7 +5,7 @@ import { terminalsOf, METER_G_R } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter'
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -143,6 +143,10 @@ export function solve(circuit: Circuit): SolveResult {
         addRes(c.id, 'ammeter', na, nb, ra)
         break
       }
+      case 'galvanometer':
+        // 灵敏电流计：表头本体（Rg=100Ω）。dv 保留符号 → 电流方向决定指针左/右偏
+        addRes(c.id, 'galvanometer', na, nb, METER_G_R)
+        break
     }
   }
 

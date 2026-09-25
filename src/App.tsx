@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, type Comp, type CompKind } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, type Comp, type CompKind } from './solver/types'
 import { THEME as T } from './theme'
 
 const W = 1600
@@ -13,6 +13,7 @@ const KIND_NAME: Record<CompKind, string> = {
   rheostat: '滑动变阻器',
   voltmeter: '电压表',
   ammeter: '电流表',
+  galvanometer: '灵敏电流计',
   bulb: '小灯泡',
   switch: '开关',
 }
@@ -44,6 +45,9 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
   const isMeter = c.kind === 'voltmeter' || c.kind === 'ammeter'
   const isVoltmeter = c.kind === 'voltmeter'
   const meterVal = isMeter ? Math.abs(isVoltmeter ? solved?.dv ?? 0 : solved?.current ?? 0) : 0
+  const isGalvo = c.kind === 'galvanometer'
+  const galvoI = isGalvo ? (solved?.dv ?? 0) / METER_G_R : 0 // 带符号电流（A），正 = a→b
+  const galvoPegged = isGalvo && Math.abs(galvoI) > METER_G_IG
   const hitHalf = isMeter && c.expanded && !c.ideal ? 52 : d
   const body = (
     <>
@@ -87,6 +91,23 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
                 <text x={0} y={26} textAnchor="middle" fontSize={10} fill={T.label}>分流电阻</text>
               </>
             )}
+          </>
+        )
+      })()}
+      {isGalvo && (() => {
+        // 灵敏电流计：中心零位，指针随电流方向左/右偏转（±50°，量程 ±1mA）
+        const defl = Math.max(-1, Math.min(1, galvoI / METER_G_IG))
+        const ang = (defl * 50 * Math.PI) / 180
+        const nx = Math.sin(ang) * 13
+        const ny = 2 - Math.cos(ang) * 13
+        return (
+          <>
+            <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
+            <line x1={0} y1={2} x2={nx} y2={2 + ny} stroke="#c0392b" strokeWidth={2} strokeLinecap="round" />
+            <circle cx={0} cy={2} r={2} fill="#c0392b" />
+            <text x={0} y={16} textAnchor="middle" fontSize={12} fontWeight={700} fill={stroke}>G</text>
+            <text x={-13} y={-8} fontSize={9} fill={T.label}>−</text>
+            <text x={13} y={-8} fontSize={9} fill={T.label}>+</text>
           </>
         )
       })()}
@@ -206,12 +227,13 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? (c.ideal ? '理想' : '实际①')
+    : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
     : c.kind === 'rheostat' ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω`
     : c.closed ? '闭合' : '断开'
   const readout =
-    !isMeter && solved && solved.current > 1e-6
+    !isMeter && !isGalvo && solved && solved.current > 1e-6
       ? `I=${solved.current.toFixed(3)}A · P=${solved.power.toFixed(2)}W`
-      : solved && !isMeter ? '无电流' : ''
+      : solved && !isMeter && !isGalvo ? '无电流' : ''
   return (
     <g transform={`translate(${c.x} ${c.y}) rotate(${c.rot})`}>
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
@@ -483,6 +505,7 @@ export default function App() {
     { kind: 'rheostat', label: '滑动变阻器' },
     { kind: 'voltmeter', label: '电压表' },
     { kind: 'ammeter', label: '电流表' },
+    { kind: 'galvanometer', label: '灵敏电流计' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -776,6 +799,21 @@ export default function App() {
                     {selected.ideal ? ' · 理想表不影响电路' : ' · 实际表会改变电路，注意读数偏差'}
                     {selected.customRange ? ' · 自定义量程下无表盘可读' : ' · 点示数可查看表盘'}
                   </p>
+                </>
+              )
+            })()}
+            {selected.kind === 'galvanometer' && (() => {
+              const iSigned = (selResult?.dv ?? 0) / METER_G_R
+              const mA = Math.abs(iSigned) * 1000
+              return (
+                <>
+                  <p className="warn" style={{ margin: 0 }}>
+                    中心零位 · 内阻 100Ω · 量程 ±1mA。
+                    {mA < 0.001 ? '当前无电流'
+                      : mA > 1 ? `⚠ 电流 ${mA.toFixed(1)}mA 超量程，指针打满（灵敏电流计需并联分流电阻才能测大电流）`
+                      : `电流 ${mA.toFixed(2)}mA，指针${iSigned > 0 ? '右' : '左'}偏`}
+                  </p>
+                  <button className="wide" onClick={() => s.rotate(selected.id)}>对调接线柱（± 反向）</button>
                 </>
               )
             })()}

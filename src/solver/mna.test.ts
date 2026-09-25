@@ -251,4 +251,35 @@ describe('MNA 求解器', () => {
     const i = 6 / (10.5 + 0.1) // 展开态总内阻 ≈ 0.1
     expect(r.byComp['a1'].current).toBeCloseTo(i, 2)
   })
+
+  it('灵敏电流计：内阻 100Ω 串入回路（正接 → dv > 0）', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'g1', kind: 'galvanometer', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'g1:a' },
+      { id: 'w2', a: 'g1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['g1'].current).toBeCloseTo(6 / 110.502, 3)
+    expect(r.byComp['g1'].dv).toBeGreaterThan(0)
+  })
+
+  it('灵敏电流计反接 → dv 反号（指针反向偏转的依据）', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'g1', kind: 'galvanometer', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'g1:b' },
+      { id: 'w2', a: 'g1:a', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['g1'].dv).toBeLessThan(0)
+  })
 })
