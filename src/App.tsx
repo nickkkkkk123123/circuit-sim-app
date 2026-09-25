@@ -122,7 +122,7 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
-    : c.kind === 'rheostat' ? (c.expanded ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω` : `${(c.pos * c.Rmax).toFixed(1)}Ω`)
+    : c.kind === 'rheostat' ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω`
     : c.closed ? '闭合' : '断开'
   const readout =
     solved && solved.current > 1e-6
@@ -232,7 +232,7 @@ export default function App() {
       let best: string | null = null
       let bestD = 18
       for (const c of s.comps) {
-        for (const t of ['a', 'b'] as const) {
+        for (const t of terminalsOf(c)) {
           const p = terminalPos(c, t)
           const d = Math.hypot(p.x - x, p.y - y)
           if (d < bestD) { bestD = d; best = `${c.id}:${t}` }
@@ -501,6 +501,11 @@ export default function App() {
                     {collapseBlocked
                       ? '⚠ 金属杆端子 c/d 上还接着导线，先删除才能收起'
                       : '四接线柱：a/b=下方电阻丝两端，c/d=上方金属杆。一上一下=变阻，两下=全阻值，两上=导线'}
+                  </p>
+                )}
+                {!selected.expanded && (
+                  <p className="warn" style={{ margin: 0 }}>
+                    三接线柱：p=滑片上方（拖动箭头改变阻值），a/b=下方电阻丝两端。p+a 或 p+b=变阻，a+b=全阻值
                   </p>
                 )}
               </>

@@ -116,7 +116,20 @@ describe('MNA 求解器', () => {
     expect(r.byComp['r1'].current).toBeCloseTo(6 / 2.512, 2)
   })
 
-  it('紧凑态：单支路等效 R = pos × Rmax', () => {
+  it('紧凑态·一上一下：p（滑片上端）+ b → R = (1-pos) × Rmax', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5 },
+      { id: 'r1', kind: 'rheostat', x: 0, y: 0, rot: 0, Rmax: 20, pos: 0.5, expanded: false },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:p' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 10.502, 2)
+  })
+
+  it('紧凑态·两下：a + b → 全阻值 20Ω', () => {
     const comps: Comp[] = [
       { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5 },
       { id: 'r1', kind: 'rheostat', x: 0, y: 0, rot: 0, Rmax: 20, pos: 0.5, expanded: false },
@@ -126,6 +139,6 @@ describe('MNA 求解器', () => {
       { id: 'w2', a: 'r1:b', b: 'b1:b' },
     ]
     const r = solve({ comps, wires })
-    expect(r.byComp['r1'].current).toBeCloseTo(6 / 10.502, 2)
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 20.502, 2)
   })
 })

@@ -28,14 +28,13 @@ interface Branch {
 }
 
 // 端子即节点（导线不合并节点——导线本身是 0.002Ω 支路，这样每根导线有真实电流可显示）
-// 展开态滑动变阻器额外暴露 :c/:d（金属杆两端），并有内部节点 :__t（杆）与 :__p（滑片触点）
+// 滑动变阻器：紧凑态额外端子 :p（滑片上方）+ 内部节点 :__p；展开态另有 :c/:d（金属杆两端）与 :__t（杆）
 function buildNodes(circuit: Circuit) {
   const nodeIds: string[] = []
   for (const c of circuit.comps) {
     nodeIds.push(...terminalsOf(c).map((t) => `${c.id}:${t}`))
-    if (c.kind === 'rheostat' && c.expanded) {
-      nodeIds.push(`${c.id}:__t`, `${c.id}:__p`)
-    }
+    if (c.kind === 'rheostat') nodeIds.push(`${c.id}:__p`)
+    if (c.kind === 'rheostat' && c.expanded) nodeIds.push(`${c.id}:__t`)
   }
   return { nodeIds: [...new Set(nodeIds)] }
 }
@@ -88,19 +87,21 @@ export function solve(circuit: Circuit): SolveResult {
         addRes(c.id, c.closed ? 'switch' : 'switch-open', na, nb, c.closed ? 0.01 : 1e9)
         break
       case 'rheostat': {
-        if (!c.expanded) {
-          // 紧凑态=等效"一上一下"：R = pos × Rmax
-          addRes(c.id, 'rheostat', na, nb, Math.max(c.pos * c.Rmax, 0.01))
-          break
-        }
-        // 展开态内部拓扑：金属杆两端(c/d)→杆节点__t→滑片触点__p→两段电阻丝（pos 段接 a，余段接 b）
-        const nc = find(`${c.id}:c`)
-        const nd = find(`${c.id}:d`)
-        const nt = find(`${c.id}:__t`)
+        // 内部拓扑：滑片节点__p 分出两段电阻丝（pos 段接 a，余段接 b）
         const np = find(`${c.id}:__p`)
-        addRes(`${c.id}:rodC`, 'wire', nc, nt, 0.002)
-        addRes(`${c.id}:rodD`, 'wire', nd, nt, 0.002)
-        addRes(`${c.id}:tap`, 'wire', nt, np, 0.01)
+        if (c.expanded) {
+          // 展开态：金属杆两端(c/d)→杆节点__t→滑片触点__p
+          const nc = find(`${c.id}:c`)
+          const nd = find(`${c.id}:d`)
+          const nt = find(`${c.id}:__t`)
+          addRes(`${c.id}:rodC`, 'wire', nc, nt, 0.002)
+          addRes(`${c.id}:rodD`, 'wire', nd, nt, 0.002)
+          addRes(`${c.id}:tap`, 'wire', nt, np, 0.01)
+        } else {
+          // 紧凑态：滑片上方端子 p → 滑片节点（"一上一下"的"上"）
+          const npt = find(`${c.id}:p`)
+          addRes(`${c.id}:ptap`, 'wire', npt, np, 0.002)
+        }
         addRes(`${c.id}:segA`, 'rheostat', np, na, Math.max(c.pos * c.Rmax, 0.01))
         addRes(`${c.id}:segB`, 'rheostat', np, nb, Math.max((1 - c.pos) * c.Rmax, 0.01))
         break
@@ -148,9 +149,9 @@ export function solve(circuit: Circuit): SolveResult {
     if (b.kind !== 'wire' && !b.refId.includes(':')) byComp[b.refId] = results[results.length - 1]
   }
 
-  // 展开态滑动变阻器：多支路汇总——电流取主导支路最大值，功率为各段之和
+  // 滑动变阻器（紧凑/展开皆多支路）：电流取主导支路最大值，功率为各段之和
   for (const c of comps) {
-    if (c.kind !== 'rheostat' || !c.expanded) continue
+    if (c.kind !== 'rheostat') continue
     const parts = results.filter((r) => r.kind === 'rheostat' && r.refId.startsWith(c.id + ':'))
     const rodCurrent = Math.max(
       0,

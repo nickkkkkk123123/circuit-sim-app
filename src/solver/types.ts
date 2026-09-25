@@ -36,11 +36,12 @@ export interface Rheostat extends BaseComp {
 
 export type Comp = Battery | Resistor | Bulb | Switch | Rheostat
 
-export type TerminalId = 'a' | 'b' | 'c' | 'd'
+export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
-/** 元件当前对外暴露的接线柱（展开态滑动变阻器为四端子，其余两端子） */
+/** 元件当前对外暴露的接线柱（滑动变阻器：紧凑态 a/b/p 三端子，展开态 a/b/c/d 四端子，其余两端子） */
 export function terminalsOf(c: Comp): TerminalId[] {
-  return c.kind === 'rheostat' && c.expanded ? ['a', 'b', 'c', 'd'] : ['a', 'b']
+  if (c.kind !== 'rheostat') return ['a', 'b']
+  return c.expanded ? ['a', 'b', 'c', 'd'] : ['a', 'b', 'p']
 }
 
 export interface Wire {
@@ -68,17 +69,25 @@ const RHEO_ROD_Y = 24
 const RHEO_HALF_W = 32
 
 export function terminalPos(c: Comp, t: TerminalId): { x: number; y: number } {
-  if (c.kind === 'rheostat' && c.expanded) {
-    const local: Record<TerminalId, [number, number]> = {
-      a: [-RHEO_HALF_W, 0],
-      b: [RHEO_HALF_W, 0],
-      c: [-RHEO_HALF_W, -RHEO_ROD_Y],
-      d: [RHEO_HALF_W, -RHEO_ROD_Y],
+  if (c.kind === 'rheostat') {
+    if (c.expanded) {
+      const local: Partial<Record<TerminalId, [number, number]>> = {
+        a: [-RHEO_HALF_W, 0],
+        b: [RHEO_HALF_W, 0],
+        c: [-RHEO_HALF_W, -RHEO_ROD_Y],
+        d: [RHEO_HALF_W, -RHEO_ROD_Y],
+      }
+      const [lx, ly] = local[t]!
+      // 90° 旋转与两端子元件同约定：a→上方，b→下方
+      if (c.rot === 90) return { x: c.x - ly, y: c.y + lx }
+      return { x: c.x + lx, y: c.y + ly }
     }
-    const [lx, ly] = local[t]
-    // 90° 旋转与两端子元件同约定：a→上方，b→下方
-    if (c.rot === 90) return { x: c.x - ly, y: c.y + lx }
-    return { x: c.x + lx, y: c.y + ly }
+    // 紧凑态：p 端子骑在滑片箭头顶端，位置随 pos 动态变化
+    if (t === 'p') {
+      const bx = -20 + 40 * c.pos
+      if (c.rot === 90) return { x: c.x + 32, y: c.y + bx }
+      return { x: c.x + bx, y: c.y - 32 }
+    }
   }
   const d = TERMINAL_OFFSET[c.kind]
   const sign = t === 'a' || t === 'c' ? -1 : 1
