@@ -10,9 +10,11 @@ const H = 900
 const KIND_NAME: Record<CompKind, string> = {
   battery: '电源',
   resistor: '定值电阻',
+  rheostat: '滑动变阻器',
+  voltmeter: '电压表',
+  ammeter: '电流表',
   bulb: '小灯泡',
   switch: '开关',
-  rheostat: '滑动变阻器',
 }
 
 function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
@@ -38,8 +40,29 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
+  const isMeter = c.kind === 'voltmeter' || c.kind === 'ammeter'
+  const isVoltmeter = c.kind === 'voltmeter'
+  const meterVal = isMeter ? Math.abs(isVoltmeter ? solved?.dv ?? 0 : solved?.current ?? 0) : 0
   const body = (
     <>
+      {isMeter && (() => {
+        // 指针表盘：量程内线性偏转（-135°..135°），负值钳在 0
+        const frac = Math.max(0, Math.min(1, meterVal / c.range))
+        const ang = (-135 + 270 * frac) * Math.PI / 180
+        const nx = Math.sin(ang) * 13
+        const ny = 2 - Math.cos(ang) * 13
+        return (
+          <>
+            <circle r={20} fill="#e9edf5" stroke={selected ? T.inkSelected : '#8a94a6'} strokeWidth={2.5} />
+            <line x1={-13} y1={-2} x2={13} y2={-2} stroke="#9aa5b8" strokeWidth={1} />
+            <text x={-14} y={-7} fontSize={7} fill="#5b6472">0</text>
+            <text x={9} y={-7} fontSize={7} fill="#5b6472">{c.range}</text>
+            <line x1={0} y1={2} x2={nx} y2={ny} stroke="#c0392b" strokeWidth={2} strokeLinecap="round" />
+            <circle cx={0} cy={2} r={2} fill="#c0392b" />
+            <text x={0} y={15} textAnchor="middle" fontSize={11} fontWeight={700} fill="#2a3140">{isVoltmeter ? 'V' : 'A'}</text>
+          </>
+        )
+      })()}
       {c.kind === 'battery' && (c.expanded ? (
         // 展开态：虚线框内 E（电池符号）与 r（内阻）串联——"实际电源=理想电源+内阻"教学图示
         <>
@@ -134,12 +157,13 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
+    : isMeter ? `${meterVal.toFixed(2)}${isVoltmeter ? 'V' : 'A'}` + (c.ideal ? '' : '①')
     : c.kind === 'rheostat' ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω`
     : c.closed ? '闭合' : '断开'
   const readout =
-    solved && solved.current > 1e-6
+    !isMeter && solved && solved.current > 1e-6
       ? `I=${solved.current.toFixed(3)}A · P=${solved.power.toFixed(2)}W`
-      : solved ? '无电流' : ''
+      : solved && !isMeter ? '无电流' : ''
   return (
     <g transform={`translate(${c.x} ${c.y}) rotate(${c.rot})`}>
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
@@ -342,6 +366,8 @@ export default function App() {
     { kind: 'battery', label: '电源' },
     { kind: 'resistor', label: '定值电阻' },
     { kind: 'rheostat', label: '滑动变阻器' },
+    { kind: 'voltmeter', label: '电压表' },
+    { kind: 'ammeter', label: '电流表' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -581,6 +607,36 @@ export default function App() {
                 )}
               </>
             )}
+            {(selected.kind === 'voltmeter' || selected.kind === 'ammeter') && (() => {
+              const isV = selected.kind === 'voltmeter'
+              const unit = isV ? 'V' : 'A'
+              const rMin = isV ? 100 : 0.01
+              const rMax = isV ? 100000 : 1
+              const rStep = isV ? 100 : 0.01
+              return (
+                <>
+                  <label>量程 0~{selected.range}{unit}
+                    <input type="range" min={isV ? 3 : 0.6} max={isV ? 20 : 5} step={isV ? 1 : 0.1} value={selected.range}
+                      onChange={(e) => s.updateParam(selected.id, 'range', +e.target.value)} />
+                  </label>
+                  <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={selected.ideal}
+                      onChange={(e) => s.updateParam(selected.id, 'ideal', e.target.checked)} />
+                    理想电表（内阻无穷{'大'}/零）
+                  </label>
+                  {!selected.ideal && (
+                    <label>内阻 {selected.r}{unit}（影响电路）
+                      <input type="range" min={rMin} max={rMax} step={rStep} value={selected.r}
+                        onChange={(e) => s.updateParam(selected.id, 'r', +e.target.value)} />
+                    </label>
+                  )}
+                  <p className="warn" style={{ margin: 0 }}>
+                    {isV ? '并联在被测元件两端' : '串联接入被测支路'}
+                    {selected.ideal ? ' · 理想表不影响电路' : ' · 实际表会改变电路，注意读数偏差'}
+                  </p>
+                </>
+              )
+            })()}
             {selected.kind === 'switch' && (
               <button className="wide" onClick={() => s.toggleSwitch(selected.id)}>
                 {selected.closed ? '断开开关' : '闭合开关'}

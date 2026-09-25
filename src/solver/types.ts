@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter'
 
 export interface BaseComp {
   id: string
@@ -35,7 +35,21 @@ export interface Rheostat extends BaseComp {
   expanded: boolean // 展开四接线柱：a/b=电阻丝两端（下），c/d=金属杆两端（上）
 }
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat
+export interface Voltmeter extends BaseComp {
+  kind: 'voltmeter'
+  r: number // 内阻 Ω（实际模式）
+  ideal: boolean // 理想模式：内阻 10MΩ，对电路无影响
+  range: number // 量程 V（表盘满偏）
+}
+
+export interface Ammeter extends BaseComp {
+  kind: 'ammeter'
+  r: number // 内阻 Ω（实际模式）
+  ideal: boolean // 理想模式：内阻 1mΩ
+  range: number // 量程 A（表盘满偏）
+}
+
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -63,6 +77,8 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   bulb: 24,
   switch: 26,
   rheostat: 32,
+  voltmeter: 24,
+  ammeter: 24,
 }
 
 // 展开态滑动变阻器：金属杆距中心的高度
@@ -109,5 +125,9 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0, closed: true }
     case 'rheostat':
       return { id, kind, x, y, rot: 0, Rmax: 20, pos: 0.5, expanded: false }
+    case 'voltmeter':
+      return { id, kind, x, y, rot: 0, r: 3000, ideal: true, range: 15 }
+    case 'ammeter':
+      return { id, kind, x, y, rot: 0, r: 0.1, ideal: true, range: 3 }
   }
 }

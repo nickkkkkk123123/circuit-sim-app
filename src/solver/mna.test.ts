@@ -167,4 +167,55 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires })
     expect(r.byComp['r1'].current).toBeCloseTo(6 / 11.001, 2)
   })
+
+  it('理想电压表并联在 10Ω 电阻两端 → 读数 = 路端电压 5.714V，几乎不分流', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+      { id: 'v1', kind: 'voltmeter', x: 0, y: 0, rot: 0, r: 3000, ideal: true, range: 15 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+      { id: 'w3', a: 'r1:a', b: 'v1:a' },
+      { id: 'w4', a: 'v1:b', b: 'r1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['v1'].dv).toBeCloseTo(6 * 10 / 10.502, 2)
+    expect(r.byComp['v1'].current).toBeLessThan(0.001)
+  })
+
+  it('实际电压表（内阻 3kΩ→量程内）并联会轻微拉低读数', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+      { id: 'v1', kind: 'voltmeter', x: 0, y: 0, rot: 0, r: 3000, ideal: false, range: 15 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+      { id: 'w3', a: 'r1:a', b: 'v1:a' },
+      { id: 'w4', a: 'v1:b', b: 'r1:b' },
+    ]
+    const r = solve({ comps, wires })
+    // 10∥3000 = 9.967Ω → 路端电压略低于理想值
+    const u = 6 * (10 * 3000 / 3010) / (0.5 + 10 * 3000 / 3010)
+    expect(r.byComp['v1'].dv).toBeCloseTo(u, 2)
+    expect(Math.abs(r.byComp['v1'].dv)).toBeLessThan(6 * 10 / 10.502 + 0.01)
+  })
+
+  it('理想电流表串联在回路中 → 读数 = 回路电流，压降近零', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'a1', kind: 'ammeter', x: 0, y: 0, rot: 0, r: 0.1, ideal: true, range: 3 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'a1:a' },
+      { id: 'w2', a: 'a1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['a1'].current).toBeCloseTo(6 / 10.502, 2)
+  })
 })

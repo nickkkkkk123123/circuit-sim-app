@@ -5,7 +5,7 @@ import { terminalsOf } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat'
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -113,6 +113,18 @@ export function solve(circuit: Circuit): SolveResult {
         }
         addRes(`${c.id}:segA`, 'rheostat', np, na, Math.max(c.pos * c.Rmax, 0.01))
         addRes(`${c.id}:segB`, 'rheostat', np, nb, Math.max((1 - c.pos) * c.Rmax, 0.01))
+        break
+      }
+      case 'voltmeter': {
+        // 并联式电压表：高内阻支路，读数 = 两端电压
+        const rv = c.ideal ? 1e7 : Math.max(c.r, 1)
+        addRes(c.id, 'voltmeter', na, nb, rv)
+        break
+      }
+      case 'ammeter': {
+        // 串联式电流表：低内阻支路，读数 = 支路电流
+        const ra = c.ideal ? 1e-3 : Math.max(c.r, 1e-3)
+        addRes(c.id, 'ammeter', na, nb, ra)
         break
       }
     }
