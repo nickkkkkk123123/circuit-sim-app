@@ -64,22 +64,26 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
             <text x={gCx} y={gCy + 22} textAnchor="middle" fontSize={10} fill={T.label}>表头G</text>
             {isVoltmeter ? (
               <>
-                {/* G 串联分压电阻 */}
-                <line x1={gCx + 13} y1={0} x2={8} y2={0} stroke={stroke} strokeWidth={2} />
-                <rect x={8} y={-8} width={24} height={16} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
-                <text x={20} y={22} textAnchor="middle" fontSize={10} fill={T.label}>分压电阻</text>
+                {/* G 串联分压电阻：链条水平居中 */}
+                <line x1={gCx + 13} y1={0} x2={4} y2={0} stroke={stroke} strokeWidth={2} />
+                <rect x={4} y={-8} width={26} height={16} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
+                <line x1={30} y1={0} x2={48} y2={0} stroke={stroke} strokeWidth={2} />
+                <text x={16} y={-13} textAnchor="middle" fontSize={10} fill={T.label}>分压电阻</text>
               </>
             ) : (
               <>
-                {/* G 与分流电阻并联 */}
-                <line x1={-48} y1={0} x2={-37} y2={0} stroke={stroke} strokeWidth={2} />
-                <line x1={-37} y1={0} x2={-37} y2={gCy} stroke={stroke} strokeWidth={2} />
-                <line x1={gCx + 13} y1={gCy} x2={37} y2={gCy} stroke={stroke} strokeWidth={2} />
-                <line x1={37} y1={gCy} x2={37} y2={0} stroke={stroke} strokeWidth={2} />
-                <line x1={-37} y1={0} x2={-37} y2={16} stroke={stroke} strokeWidth={2} />
-                <rect x={-29} y={10} width={18} height={12} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
-                <line x1={-11} y1={16} x2={37} y2={16} stroke={stroke} strokeWidth={2} />
-                <line x1={37} y1={16} x2={37} y2={0} stroke={stroke} strokeWidth={2} />
+                {/* G 与分流电阻并联：两条支路上下对称、整体居中 */}
+                <line x1={-48} y1={0} x2={-38} y2={0} stroke={stroke} strokeWidth={2} />
+                <line x1={-38} y1={0} x2={-38} y2={gCy} stroke={stroke} strokeWidth={2} />
+                <line x1={-38} y1={gCy} x2={gCx - 13} y2={gCy} stroke={stroke} strokeWidth={2} />
+                <line x1={gCx + 13} y1={gCy} x2={38} y2={gCy} stroke={stroke} strokeWidth={2} />
+                <line x1={38} y1={gCy} x2={38} y2={0} stroke={stroke} strokeWidth={2} />
+                <line x1={-38} y1={0} x2={-38} y2={16} stroke={stroke} strokeWidth={2} />
+                <line x1={-38} y1={16} x2={-14} y2={16} stroke={stroke} strokeWidth={2} />
+                <rect x={-14} y={10} width={28} height={12} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
+                <line x1={14} y1={16} x2={38} y2={16} stroke={stroke} strokeWidth={2} />
+                <line x1={38} y1={16} x2={38} y2={0} stroke={stroke} strokeWidth={2} />
+                <text x={0} y={-18} textAnchor="middle" fontSize={10} fill={T.label}>表头G</text>
                 <text x={0} y={26} textAnchor="middle" fontSize={10} fill={T.label}>分流电阻</text>
               </>
             )}
@@ -742,41 +746,52 @@ export default function App() {
       </aside>
 
       {dialFor && (() => {
-        // 表盘读数练习弹窗：180° 弧形刻度盘（0 / ¼ / ½ / ¾ / 满偏），指针随实测值偏转
+        // 表盘读数练习弹窗：复刻学生实验电表——双排刻度（上=大量程，下=小量程）、30 小格
         const c = s.comps.find((k) => k.id === dialFor)
         if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter') || c.customRange) return null
         const isV = c.kind === 'voltmeter'
         const unit = isV ? 'V' : 'A'
         const val = Math.abs(isV ? result.byComp[c.id]?.dv ?? 0 : result.byComp[c.id]?.current ?? 0)
-        const R = 80, CX = 100, CY = 100
-        const dir = (deg: number) => ({ x: CX + Math.sin((deg * Math.PI) / 180) * R, y: CY - Math.cos((deg * Math.PI) / 180) * R })
+        const R = 100, CX = 140, CY = 148
+        const dir = (f: number, r: number) => {
+          const deg = (-50 + 100 * f) * Math.PI / 180
+          return { x: CX + Math.sin(deg) * r, y: CY - Math.cos(deg) * r }
+        }
         const frac = Math.max(0, Math.min(1, val / c.range))
-        const ndeg = -90 + 180 * frac
-        const nd = dir(ndeg)
-        const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => {
-          const deg = -90 + 180 * f
-          const o = dir(deg), i = { x: CX + Math.sin((deg * Math.PI) / 180) * (R - 14), y: CY - Math.cos((deg * Math.PI) / 180) * (R - 14) }
-          const lbl = { x: CX + Math.sin((deg * Math.PI) / 180) * (R - 24), y: CY - Math.cos((deg * Math.PI) / 180) * (R - 24) + 4 }
-          const v = c.range * f
-          return { o, i, lbl, v }
-        })
+        const nd = dir(frac, R - 6)
+        const hiNums = isV ? [0, 5, 10, 15] : [0, 1, 2, 3]
+        const loNums = isV ? [0, 1, 2, 3] : [0, 0.2, 0.4, 0.6]
+        const ticks = []
+        for (let i = 0; i <= 30; i++) {
+          const f = i / 30
+          const major = i % 10 === 0
+          const mid = i % 5 === 0
+          ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major })
+        }
+        const nums = [0, 10 / 30, 20 / 30, 1]
         return (
           <div className="dial-overlay" onPointerDown={() => setDialFor(null)}>
             <div className="dial-card" onPointerDown={(e) => e.stopPropagation()}>
-              <h3>{isV ? '电压表' : '电流表'}读数 · 量程 0~{c.range}{unit}</h3>
-              <svg width={220} height={150} viewBox="0 0 200 150">
-                <path d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`} fill="none" stroke="#9aa5b8" strokeWidth={2} />
+              <h3>{isV ? '电压表' : '电流表'} · 量程 0~{c.range}{unit}</h3>
+              <svg width={290} height={168} viewBox="0 0 280 168">
+                <rect x={6} y={2} width={268} height={164} rx={10} fill="#f7f8fa" stroke="#c9d2e0" />
                 {ticks.map((t, i) => (
+                  <line key={i} x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#2a3140" strokeWidth={t.major ? 2 : 1} />
+                ))}
+                {nums.map((f, i) => (
                   <g key={i}>
-                    <line x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#dfe3ee" strokeWidth={i === 0 || i === 4 ? 2.5 : 1.5} />
-                    <text x={t.lbl.x} y={t.lbl.y} textAnchor="middle" fontSize={11} fill="#9aa5b8">
-                      {+t.v.toFixed(2)}
-                    </text>
+                    <text x={dir(f, R - 22).x} y={dir(f, R - 22).y} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140">{hiNums[i]}</text>
+                    <text x={dir(f, R - 38).x} y={dir(f, R - 38).y} textAnchor="middle" fontSize={10} fill="#5b6472">{loNums[i]}</text>
                   </g>
                 ))}
                 <line x1={CX} y1={CY} x2={nd.x} y2={nd.y} stroke="#c0392b" strokeWidth={2.5} strokeLinecap="round" />
-                <circle cx={CX} cy={CY} r={4} fill="#c0392b" />
+                <circle cx={CX} cy={CY} r={5} fill="#c0392b" />
+                <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isV ? 'V' : 'A'}</text>
               </svg>
+              <div className="dial-rows">
+                <span>按 0~{isV ? 15 : 3}{unit} 刻度读：{(val * (isV ? 15 : 3) / c.range).toFixed(isV ? 1 : 2)}{unit}（每小格 {isV ? 0.5 : 0.1}{unit}）</span>
+                <span>按 0~{isV ? 3 : 0.6}{unit} 刻度读：{(val * (isV ? 3 : 0.6) / c.range).toFixed(isV ? 2 : 3)}{unit}（每小格 {isV ? 0.1 : 0.02}{unit}）</span>
+              </div>
               <div className="dial-val">{val.toFixed(2)}{unit}</div>
               <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
             </div>
