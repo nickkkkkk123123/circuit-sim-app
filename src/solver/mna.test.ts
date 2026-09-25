@@ -218,4 +218,37 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires })
     expect(r.byComp['a1'].current).toBeCloseTo(6 / 10.502, 2)
   })
+
+  it('电压表展开态：G(100Ω) 串联分压电阻 → 总内阻与紧凑态一致，读数不变', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+      { id: 'v1', kind: 'voltmeter', x: 0, y: 0, rot: 0, r: 3000, ideal: false, range: 15, expanded: true },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+      { id: 'w3', a: 'r1:a', b: 'v1:a' },
+      { id: 'w4', a: 'v1:b', b: 'r1:b' },
+    ]
+    const r = solve({ comps, wires })
+    const u = 6 * (10 * 3000 / 3010) / (0.5 + 10 * 3000 / 3010)
+    expect(r.byComp['v1'].dv).toBeCloseTo(u, 2)
+  })
+
+  it('电流表展开态：G(100Ω) ∥ 分流电阻 → 总内阻仍 = r，表头电流 = I×r/Rg', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'a1', kind: 'ammeter', x: 0, y: 0, rot: 0, r: 0.1, ideal: false, range: 3, expanded: true },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'a1:a' },
+      { id: 'w2', a: 'a1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    const i = 6 / (10.5 + 0.1) // 展开态总内阻 ≈ 0.1
+    expect(r.byComp['a1'].current).toBeCloseTo(i, 2)
+  })
 })

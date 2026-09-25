@@ -1,7 +1,7 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
-import { terminalsOf } from './types'
+import { terminalsOf, METER_G_R } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
@@ -36,6 +36,7 @@ function buildNodes(circuit: Circuit) {
     if (c.kind === 'rheostat') nodeIds.push(`${c.id}:__p`)
     if (c.kind === 'rheostat' && c.expanded) nodeIds.push(`${c.id}:__t`)
     if (c.kind === 'battery' && c.expanded) nodeIds.push(`${c.id}:__e`) // 展开态：E 与 r 的串联点
+    if (c.kind === 'voltmeter' && c.expanded && !c.ideal) nodeIds.push(`${c.id}:__m`) // 展开态：G 与分压电阻的串联点
   }
   return { nodeIds: [...new Set(nodeIds)] }
 }
@@ -117,12 +118,27 @@ export function solve(circuit: Circuit): SolveResult {
       }
       case 'voltmeter': {
         // 并联式电压表：高内阻支路，读数 = 两端电压
+        if (c.expanded && !c.ideal) {
+          // 展开态：表头 G（Rg）串联分压电阻（Rv − Rg），总内阻与紧凑态严格相等
+          const nm = find(`${c.id}:__m`)
+          branches.push({ refId: `${c.id}:g`, kind: 'voltmeter', na, nb: nm, r: METER_G_R })
+          addRes(`${c.id}:rp`, 'resistor', nm, nb, Math.max(c.r - METER_G_R, 0.001))
+          break
+        }
         const rv = c.ideal ? 1e7 : Math.max(c.r, 1)
         addRes(c.id, 'voltmeter', na, nb, rv)
         break
       }
       case 'ammeter': {
         // 串联式电流表：低内阻支路，读数 = 支路电流
+        if (c.expanded && !c.ideal) {
+          // 展开态：表头 G（Rg）与分流电阻 Rs 并联，Rs 由 Rg∥Rs = r 反推
+          const rg = METER_G_R
+          const rs = Math.max((rg * Math.min(c.r, rg - 0.01)) / (rg - Math.min(c.r, rg - 0.01)), 1e-3)
+          addRes(`${c.id}:g`, 'ammeter', na, nb, rg)
+          addRes(`${c.id}:rs`, 'resistor', na, nb, rs)
+          break
+        }
         const ra = c.ideal ? 1e-3 : Math.max(c.r, 1e-3)
         addRes(c.id, 'ammeter', na, nb, ra)
         break
@@ -184,6 +200,19 @@ export function solve(circuit: Circuit): SolveResult {
     const current = Math.max(rodCurrent, ...parts.map((p) => p.current))
     const dv = current > 1e-9 ? power / current : 0
     byComp[c.id] = { refId: c.id, kind: 'rheostat', dv, current, power }
+  }
+
+  // 展开态电表：读数 = 表头视角（电压=两端电压；电流=流过表头+分流的总电流）
+  for (const c of comps) {
+    if ((c.kind !== 'voltmeter' && c.kind !== 'ammeter') || !c.expanded || c.ideal) continue
+    const va = V[idx.get(`${c.id}:a`)!]
+    const vb = V[idx.get(`${c.id}:b`)!]
+    const parts = results.filter((r) => r.refId.startsWith(c.id + ':'))
+    const current = c.kind === 'voltmeter'
+      ? (parts[0]?.current ?? 0) // 串联结构：表头电流即总电流
+      : parts.reduce((s, p) => s + p.current, 0) // 并联结构：表头 + 分流之和
+    const power = parts.reduce((s, p) => s + p.power, 0)
+    byComp[c.id] = { refId: c.id, kind: c.kind, dv: va - vb, current, power }
   }
 
   const openCircuit = comps.some((c) => c.kind === 'switch' && !c.closed)

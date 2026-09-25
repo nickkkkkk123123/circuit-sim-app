@@ -43,10 +43,50 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
   const isMeter = c.kind === 'voltmeter' || c.kind === 'ammeter'
   const isVoltmeter = c.kind === 'voltmeter'
   const meterVal = isMeter ? Math.abs(isVoltmeter ? solved?.dv ?? 0 : solved?.current ?? 0) : 0
+  const hitHalf = isMeter && c.expanded && !c.ideal ? 52 : d
   const body = (
     <>
-      {isMeter && (() => {
-        // 指针表盘：量程内线性偏转（-135°..135°），负值钳在 0
+      {isMeter && c.expanded && !c.ideal && (() => {
+        // 展开态：虚线框内画表头 G 与改装电阻的真实拓扑
+        const frac = Math.max(0, Math.min(1, meterVal / c.range))
+        const ang = (-135 + 270 * frac) * Math.PI / 180
+        const gnx = Math.sin(ang) * 6
+        const gny = -Math.cos(ang) * 6
+        const gCx = isVoltmeter ? -26 : -24
+        const gCy = isVoltmeter ? 0 : -12
+        return (
+          <>
+            <rect x={-50} y={-26} width={100} height={52} fill="none" stroke="#55617e" strokeWidth={1.5} strokeDasharray="5 4" rx={6} />
+            {/* 表头 G：小圆盘 + 迷你指针（偏转角与主表盘一致） */}
+            <circle cx={gCx} cy={gCy} r={13} fill="#e9edf5" stroke={stroke} strokeWidth={2} />
+            <line x1={gCx} y1={gCy} x2={gCx + gnx} y2={gCy + gny} stroke="#c0392b" strokeWidth={1.8} strokeLinecap="round" />
+            <text x={gCx} y={gCy + 22} textAnchor="middle" fontSize={10} fill={T.label}>表头G</text>
+            {isVoltmeter ? (
+              <>
+                {/* G 串联分压电阻 */}
+                <line x1={gCx + 13} y1={0} x2={8} y2={0} stroke={stroke} strokeWidth={2} />
+                <rect x={8} y={-8} width={24} height={16} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
+                <text x={20} y={22} textAnchor="middle" fontSize={10} fill={T.label}>分压电阻</text>
+              </>
+            ) : (
+              <>
+                {/* G 与分流电阻并联 */}
+                <line x1={-48} y1={0} x2={-37} y2={0} stroke={stroke} strokeWidth={2} />
+                <line x1={-37} y1={0} x2={-37} y2={gCy} stroke={stroke} strokeWidth={2} />
+                <line x1={gCx + 13} y1={gCy} x2={37} y2={gCy} stroke={stroke} strokeWidth={2} />
+                <line x1={37} y1={gCy} x2={37} y2={0} stroke={stroke} strokeWidth={2} />
+                <line x1={-37} y1={0} x2={-37} y2={16} stroke={stroke} strokeWidth={2} />
+                <rect x={-29} y={10} width={18} height={12} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
+                <line x1={-11} y1={16} x2={37} y2={16} stroke={stroke} strokeWidth={2} />
+                <line x1={37} y1={16} x2={37} y2={0} stroke={stroke} strokeWidth={2} />
+                <text x={0} y={26} textAnchor="middle" fontSize={10} fill={T.label}>分流电阻</text>
+              </>
+            )}
+          </>
+        )
+      })()}
+      {isMeter && (!c.expanded || c.ideal) && (() => {
+        // 紧凑态表盘：量程内线性偏转（-135°..135°），负值钳在 0
         const frac = Math.max(0, Math.min(1, meterVal / c.range))
         const ang = (-135 + 270 * frac) * Math.PI / 180
         const nx = Math.sin(ang) * 13
@@ -169,9 +209,9 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
         {/* 命中热区：开关额外放大（可双击通断），电池展开态随虚线框加宽 */}
         <rect
-          x={c.kind === 'battery' && c.expanded ? -48 : -d}
+          x={c.kind === 'battery' && c.expanded ? -48 : -hitHalf}
           y={-28}
-          width={c.kind === 'battery' && c.expanded ? 96 : d * 2}
+          width={c.kind === 'battery' && c.expanded ? 96 : hitHalf * 2}
           height={56}
           fill="transparent"
         />
@@ -638,7 +678,10 @@ export default function App() {
                   </label>
                   <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <input type="checkbox" checked={selected.ideal}
-                      onChange={(e) => s.updateParam(selected.id, 'ideal', e.target.checked)} />
+                      onChange={(e) => {
+                        s.updateParam(selected.id, 'ideal', e.target.checked)
+                        if (e.target.checked) s.updateParam(selected.id, 'expanded', false) // 理想表无内部结构可看
+                      }} />
                     理想电表（内阻无穷{'大'}/零）
                   </label>
                   {!selected.ideal && (
@@ -646,6 +689,11 @@ export default function App() {
                       <input type="range" min={rMin} max={rMax} step={rStep} value={selected.r}
                         onChange={(e) => s.updateParam(selected.id, 'r', +e.target.value)} />
                     </label>
+                  )}
+                  {!selected.ideal && (
+                    <button className="wide" onClick={() => s.updateParam(selected.id, 'expanded', !selected.expanded)}>
+                      {selected.expanded ? '收起内部结构' : '展开内部结构（表头+改装电阻）'}
+                    </button>
                   )}
                   <p className="warn" style={{ margin: 0 }}>
                     {isV ? '并联在被测元件两端' : '串联接入被测支路'}

@@ -37,17 +37,22 @@ export interface Rheostat extends BaseComp {
 
 export interface Voltmeter extends BaseComp {
   kind: 'voltmeter'
-  r: number // 内阻 Ω（实际模式）
+  r: number // 内阻 Ω（实际模式）= Rg + 分压电阻
   ideal: boolean // 理想模式：内阻 10MΩ，对电路无影响
   range: number // 量程 V（表盘满偏）
+  expanded?: boolean // 展开内部结构：表头 G 串联分压电阻（仅实际模式）
 }
 
 export interface Ammeter extends BaseComp {
   kind: 'ammeter'
-  r: number // 内阻 Ω（实际模式）
+  r: number // 内阻 Ω（实际模式）= Rg ∥ 分流电阻
   ideal: boolean // 理想模式：内阻 1mΩ
   range: number // 量程 A（表盘满偏）
+  expanded?: boolean // 展开内部结构：表头 G 并联分流电阻（仅实际模式）
 }
+
+// 灵敏电流计表头（G）：内阻固定 100Ω，改装电阻由总内阻反推
+export const METER_G_R = 100
 
 export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter
 
@@ -108,9 +113,11 @@ export function terminalPos(c: Comp, t: TerminalId): { x: number; y: number } {
     }
   }
   const d = TERMINAL_OFFSET[c.kind]
+  // 展开态电表：端子随虚线框外移
+  const dm = (c.kind === 'voltmeter' || c.kind === 'ammeter') && c.expanded && !c.ideal ? 48 : d
   const sign = t === 'a' || t === 'c' ? -1 : 1
-  if (c.rot === 90) return { x: c.x, y: c.y + sign * d }
-  return { x: c.x + sign * d, y: c.y }
+  if (c.rot === 90) return { x: c.x, y: c.y + sign * dm }
+  return { x: c.x + sign * dm, y: c.y }
 }
 
 export function defaultComp(kind: CompKind, id: string, x: number, y: number): Comp {
