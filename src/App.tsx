@@ -292,8 +292,10 @@ export default function App() {
       setMouse({ x, y }) // 只有连线预览需要逐帧位置
       const best = snapTerm(x, y)
       setHoverTerm(best) // 只会指向现存元件的端子
-    } else if (hoverTerm && !s.comps.some((c) => c.id === hoverTerm.split(':')[0])) {
-      setHoverTerm(null) // 悬停的端子所属元件已被删除 → 清除
+    } else {
+      // 未在连线中：端子高亮跟随光标实际吸附位置——连完线离开后绿色熄灭，不会长亮
+      const near = snapTerm(x, y)
+      if (near !== hoverTerm) setHoverTerm(near)
     }
   }
 
