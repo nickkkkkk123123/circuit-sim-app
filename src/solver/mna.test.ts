@@ -348,4 +348,20 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires })
     expect(r.byComp['s1'].current).toBeCloseTo(0, 6)
   })
+
+  it('单刀双掷 pos=0（中间位）：两个触点全断 → 无电流', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 's1', kind: 'spdt', x: 0, y: 0, rot: 0, pos: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 's1:a' },
+      { id: 'w2', a: 's1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['s1'].current).toBeCloseTo(0, 6)
+    expect(r.openCircuit).toBe(false) // 没有开关"断开"标志，但支路 1e9Ω 电流为零
+  })
 })

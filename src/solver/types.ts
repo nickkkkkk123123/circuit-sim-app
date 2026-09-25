@@ -65,7 +65,7 @@ export interface Ohmmeter extends BaseComp {
 
 export interface Spdt extends BaseComp {
   kind: 'spdt'
-  pos: 1 | 2 // 单刀双掷：公共端 a 接通触点 1（b）或 2（p）
+  pos: 1 | 2 | 0 // 单刀双掷（ON-OFF-ON）：1=接通触点1，2=接通触点2，0=中间位断开
 }
 
 // 灵敏电流计表头（G）：内阻固定 100Ω，量程 ±1mA（双向偏转），也是电表改装的核心部件

@@ -128,12 +128,13 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         )
       })()}
       {c.kind === 'spdt' && (() => {
-        // 单刀双掷：公共端 a（下），杠杆掷向触点 1（左）或 2（右）
-        const lx = c.pos === 1 ? -18 : 18
+        // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
+        const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
+        const ly = c.pos === 0 ? -16 : -14
         return (
           <>
             <line x1={0} y1={28} x2={0} y2={8} stroke={stroke} strokeWidth={2} />
-            <line x1={0} y1={8} x2={lx} y2={-14} stroke={stroke} strokeWidth={2.5} strokeLinecap="round" />
+            <line x1={0} y1={8} x2={lx} y2={ly} stroke={stroke} strokeWidth={2.5} strokeLinecap="round" />
             <circle cx={0} cy={8} r={3} fill={stroke} />
             <text x={-28} y={-28} fontSize={9} fill={T.label}>1</text>
             <text x={28} y={-28} fontSize={9} fill={T.label}>2</text>
@@ -285,7 +286,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     : isMeter ? `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`
     : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
-    : c.kind === 'spdt' ? `公共端接 ${c.pos === 1 ? '触点1' : '触点2'}`
+    : c.kind === 'spdt' ? (c.pos === 0 ? '断开（中位）' : `公共端接 触点${c.pos}`)
     : c.kind === 'rheostat' ? (c.expanded
         ? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`
         : rheoLabel ?? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`)
@@ -538,7 +539,7 @@ export default function App() {
       if (!switchPress.moved) {
         const c = editorState().comps.find((k) => k.id === switchPress.id)
         if (c?.kind === 'switch') s.toggleSwitch(c.id)
-        if (c?.kind === 'spdt') s.updateParam(c.id, 'pos', c.pos === 1 ? 2 : 1)
+        if (c?.kind === 'spdt') s.updateParam(c.id, 'pos', c.pos === 1 ? 2 : c.pos === 2 ? 0 : 1)
       }
       setSwitchPress(null)
       return
@@ -901,14 +902,19 @@ export default function App() {
               )
             })()}
             {selected.kind === 'spdt' && (() => {
-              const other = selected.pos === 1 ? 2 : 1
+              const btn = (target: 0 | 1 | 2, text: string) => (
+                <button className="wide" disabled={selected.pos === target}
+                  onClick={() => s.updateParam(selected.id, 'pos', target)}>
+                  {text}{selected.pos === target ? '（当前）' : ''}
+                </button>
+              )
               return (
                 <>
-                  <button className="wide" onClick={() => s.updateParam(selected.id, 'pos', other)}>
-                    掷向触点 {other}（当前 {selected.pos}）
-                  </button>
+                  {btn(1, '掷向触点 1')}
+                  {btn(0, '中间位（断开）')}
+                  {btn(2, '掷向触点 2')}
                   <p className="warn" style={{ margin: 0 }}>
-                    公共端 a 与触点 {selected.pos} 接通，触点 {other} 断开。单击开关本体也可切换。
+                    公共端 a 当前与触点 {selected.pos === 0 ? '无（断开）' : selected.pos} 接通。单击开关在 1→2→断开 间循环。
                   </p>
                 </>
               )
