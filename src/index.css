@@ -243,3 +243,46 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .exp-panel-head strong { font-size: 13px; color: var(--accent-soft); }
 .exp-panel-body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
 .exp-panel-body p { font-size: 12px; line-height: 1.7; color: var(--ink); }
+
+/* 表盘浮窗：非模态、可拖动、开着能继续实验 */
+.dial-float {
+  position: fixed; right: 280px; top: 72px; z-index: 40;
+  background: var(--panel); border: 1px solid var(--border-hot); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 10px 14px 14px;
+}
+.dial-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  cursor: grab; touch-action: none; user-select: none;
+}
+.dial-head:active { cursor: grabbing; }
+.dial-head h3 { font-size: 13px; font-weight: 600; color: var(--accent-soft); }
+.dial-body { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.dial-hint { font-size: 11px; color: var(--faint); max-width: 280px; text-align: center; }
+
+/* 三接线柱：− 公共端固定，两个量程柱由接线环选择 */
+.dial-posts { display: flex; gap: 26px; margin-top: 2px; }
+.post { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
+.post-pin {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f0f2f7, #b9c2d4 60%, #8a94ab);
+  border: 2px solid #5b6472; box-shadow: inset 0 -2px 3px rgba(0,0,0,0.25);
+}
+.post-pin.black { background: radial-gradient(circle at 35% 35%, #5a5f6b, #2c3038 60%, #14161c); }
+.post label { font-size: 11px; color: var(--muted); cursor: pointer; }
+.post.active label { color: var(--accent-soft); font-weight: 700; }
+.post.active .post-pin { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), inset 0 -2px 3px rgba(0,0,0,0.25); }
+
+/* 接线环：趴在当前量程柱上，可拖到另一柱 */
+.lug {
+  position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid var(--accent); background: transparent;
+  cursor: grab; touch-action: none;
+}
+.lug:hover { border-color: var(--border-hot); }
+.lug.floating {
+  position: fixed; z-index: 60; pointer-events: none;
+  transform: translate(-50%, -50%); cursor: grabbing;
+}

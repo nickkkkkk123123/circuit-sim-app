@@ -441,6 +441,10 @@ export default function App() {
   const [expInfo, setExpInfo] = useState<{ name: string; detail: string } | null>(null)
   const [expPos, setExpPos] = useState<{ x: number; y: number } | null>(null)
   const expDragRef = useRef<{ ox: number; oy: number } | null>(null)
+  // 表盘浮窗：非模态（开着可继续实验）、可拖动；V/A 表带三接线柱拖环选量程
+  const [dialPos, setDialPos] = useState<{ x: number; y: number } | null>(null)
+  const dialDragRef = useRef<{ ox: number; oy: number } | null>(null)
+  const [lugDrag, setLugDrag] = useState<{ x: number; y: number } | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const gRef = useRef<SVGGElement | null>(null)
   const toCanvas = useCursorPos(svgRef, gRef)
@@ -535,6 +539,29 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [s])
+
+  // 接线环拖拽：跟随指针，松手落点决定量程（不依赖 capture，避免吞 click 的坑）
+  useEffect(() => {
+    if (!lugDrag) return
+    const move = (e: PointerEvent) => setLugDrag({ x: e.clientX, y: e.clientY })
+    const up = (e: PointerEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+      const post = el?.closest('[data-range]') as HTMLElement | null
+      if (post && dialFor) {
+        const r = Number(post.dataset.range)
+        const st = editorState()
+        const cur = st.comps.find((k) => k.id === dialFor)
+        if (cur && 'range' in cur && cur.range !== r) st.updateParam(dialFor, 'range', r)
+      }
+      setLugDrag(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+  }, [lugDrag, dialFor])
 
   const [pan, setPan] = useState<{ sx: number; sy: number; tx0: number; ty0: number; active: boolean } | null>(null)
 
@@ -910,7 +937,7 @@ export default function App() {
                 onPointerDown={(e) => onCompBodyPointerDown(e, c)}
                 onSliderPointerDown={onSliderPointerDown}
                 onSwitchPointerDown={onSwitchPointerDown}
-                onDialOpen={(c) => setDialFor(c.id)}
+                onDialOpen={(c) => { setDialFor(c.id); setDialPos(null) }}
                 ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -1197,9 +1224,29 @@ export default function App() {
           }
         }
         return (
-          <div className="dial-overlay" onPointerDown={() => setDialFor(null)}>
-            <div className="dial-card" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="dial-float" style={dialPos ? { left: dialPos.x, top: dialPos.y } : undefined}>
+            <div
+              className="dial-head"
+              onPointerDown={(e) => {
+                if ((e.target as HTMLElement).closest('button')) return // 点 × 时别抢事件（capture 会吞 click）
+                const el = e.currentTarget.parentElement as HTMLElement
+                const r = el.getBoundingClientRect()
+                dialDragRef.current = { ox: e.clientX - r.left, oy: e.clientY - r.top }
+                e.currentTarget.setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                if (!dialDragRef.current) return
+                setDialPos({
+                  x: Math.max(0, Math.min(e.clientX - dialDragRef.current.ox, window.innerWidth - 220)),
+                  y: Math.max(0, Math.min(e.clientY - dialDragRef.current.oy, window.innerHeight - 60)),
+                })
+              }}
+              onPointerUp={() => { dialDragRef.current = null }}
+            >
               <h3>{isO ? '欧姆表 · 中值 10Ω（断电测电阻）' : isG ? '灵敏电流计 · 量程 −1~+1mA（中心零位）' : `${isV ? '电压表' : '电流表'} · 量程 0~${c.range}${unit}`}</h3>
+              <button className="icon-btn" title="关闭" onClick={() => setDialFor(null)}>×</button>
+            </div>
+            <div className="dial-body">
               <svg width={290} height={168} viewBox="0 0 280 168">
                 <rect x={6} y={2} width={268} height={164} rx={10} fill="#f7f8fa" stroke="#c9d2e0" />
                 {ticks.map((t, i) => (
@@ -1245,9 +1292,45 @@ export default function App() {
                   )}
                 </div>
               )}
+              {(() => {
+                // 学生表三接线柱：− 公共端固定接电路，量程柱由接线环选择（拖环或点柱切换量程）
+                if (isG || isO) return null
+                const ranges = isV ? [3, 15] : [0.6, 3]
+                return (
+                  <div className="dial-posts">
+                    <div className="post common"><span className="post-pin black" /><label>− 公共</label></div>
+                    {ranges.map((r) => (
+                      <div
+                        key={r}
+                        className={'post' + (c.range === r ? ' active' : '')}
+                        data-range={r}
+                        onClick={() => {
+                          const cur = editorState().comps.find((k) => k.id === c.id)
+                          if (cur && 'range' in cur && cur.range !== r) s.updateParam(c.id, 'range', r)
+                        }}
+                      >
+                        <span className="post-pin" />
+                        <label>{r}{unit}</label>
+                        {c.range === r && !lugDrag && (
+                          <span
+                            className="lug"
+                            title="按住拖到另一个量程柱"
+                            onPointerDown={(e) => {
+                              e.preventDefault()
+                              setLugDrag({ x: e.clientX, y: e.clientY })
+                            }}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+              <p className="dial-hint">{isG || isO ? '' : '拖动接线环到另一个量程柱（或点击接线柱）切换量程；开着窗口也能继续连线实验'}</p>
               <div className="dial-val">{isO ? fmtOhm(val) : val.toFixed(2)}{unit}</div>
               <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
             </div>
+            {lugDrag && <span className="lug floating" style={{ left: lugDrag.x, top: lugDrag.y }} />}
           </div>
         )
       })()}
@@ -1288,6 +1371,7 @@ export default function App() {
           <div
             className="exp-panel-head"
             onPointerDown={(e) => {
+              if ((e.target as HTMLElement).closest('button')) return // 点 × 时别启动拖拽（capture 会吞 click）
               const el = e.currentTarget.parentElement as HTMLElement
               const r = el.getBoundingClientRect()
               expDragRef.current = { ox: e.clientX - r.left, oy: e.clientY - r.top }
