@@ -321,7 +321,8 @@ export default function App() {
     s.select(null)
     s.selectWire(null)
     // 空白处按下：进入平移待定（拖动超 6px 才算平移，原地点击=取消选中）
-    setPan({ sx: x, sy: y, tx0: viewRef.current.tx, ty0: viewRef.current.ty, active: false })
+    // 起点必须存屏幕坐标——世界坐标随平移自身变化，用它算增量会自激振荡（画布重影）
+    setPan({ sx: e.clientX, sy: e.clientY, tx0: viewRef.current.tx, ty0: viewRef.current.ty, active: false })
   }
 
   // 右键：连线中=取消；已选中的导线/元件=删除；空=取消选中
@@ -346,10 +347,14 @@ export default function App() {
   const onCanvasPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
     if (pan) {
-      // 平移画布：原地点击（位移 <6px）仍保持"取消选中"的原语义
-      if (pan.active || Math.hypot(x - pan.sx, y - pan.sy) > 6) {
+      // 平移画布：增量在屏幕像素空间计算（除以 svg 线性系数 × 缩放），与 g 的当前变换无关 → 不会振荡
+      if (pan.active || Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy) > 6) {
         if (!pan.active) setPan({ ...pan, active: true })
-        applyView({ scale: viewRef.current.scale, tx: pan.tx0 + (x - pan.sx), ty: pan.ty0 + (y - pan.sy) })
+        const ctmSvg = svgRef.current?.getScreenCTM()
+        const perScreen = ctmSvg ? 1 / ctmSvg.a : 1
+        const worldDx = (e.clientX - pan.sx) * perScreen / viewRef.current.scale
+        const worldDy = (e.clientY - pan.sy) * perScreen / viewRef.current.scale
+        applyView({ scale: viewRef.current.scale, tx: pan.tx0 + worldDx, ty: pan.ty0 + worldDy })
       }
       return
     }
