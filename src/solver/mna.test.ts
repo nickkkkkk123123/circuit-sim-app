@@ -364,4 +364,50 @@ describe('MNA 求解器', () => {
     expect(r.byComp['s1'].current).toBeCloseTo(0, 6)
     expect(r.openCircuit).toBe(false) // 没有开关"断开"标志，但支路 1e9Ω 电流为零
   })
+
+  it('LED 正向：6V 电源 + 10Ω 限流 → I = (6−2)/10.5 ≈ 0.381A（导通发光）', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'd1', kind: 'led', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'd1:a' },
+      { id: 'w2', a: 'd1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['d1'].current).toBeCloseTo(4 / 10.501, 2)
+    expect(r.byComp['d1'].current).toBeGreaterThan(0.002)
+  })
+
+  it('LED 反向接反 → 截止，电流 ≈ 0', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'd1', kind: 'led', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'd1:b' },
+      { id: 'w2', a: 'd1:a', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['d1'].current).toBeCloseTo(0, 6)
+  })
+
+  it('LED 欠压：1.5V < Vf=2V → 不导通', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 1.5, r: 0.5, expanded: false },
+      { id: 'd1', kind: 'led', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'd1:a' },
+      { id: 'w2', a: 'd1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['d1'].current).toBeCloseTo(0, 6)
+  })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, type Comp, type CompKind } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, type Comp, type CompKind } from './solver/types'
 import { THEME as T } from './theme'
 
 const W = 1600
@@ -25,6 +25,7 @@ const KIND_NAME: Record<CompKind, string> = {
   galvanometer: '灵敏电流计',
   ohmmeter: '欧姆表',
   spdt: '单刀双掷开关',
+  led: '发光二极管',
   bulb: '小灯泡',
   switch: '开关',
 }
@@ -63,6 +64,9 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   const galvoPegged = isGalvo && Math.abs(galvoI) > METER_G_IG
   const isOhm = c.kind === 'ohmmeter'
   const ohmR = isOhm ? (ohmReading ?? Infinity) : 0
+  const isLed = c.kind === 'led'
+  const ledLit = isLed && (solved?.current ?? 0) > 0.002
+  const ledFrac = ledLit ? Math.min(1, (solved!.current ?? 0) / LED_I_FULL) : 0
   const hitHalf = isMeter && c.expanded && !c.ideal ? 52 : d
   const body = (
     <>
@@ -168,6 +172,26 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
             <text x={0} y={16} textAnchor="middle" fontSize={12} fontWeight={700} fill={stroke}>G</text>
             <text x={-13} y={-8} fontSize={9} fill={T.label}>−</text>
             <text x={13} y={-8} fontSize={9} fill={T.label}>+</text>
+          </>
+        )
+      })()}
+      {isLed && (() => {
+        // 发光二极管：三角形+阴极bar（经典符号），正向导通时红色发光 + 外发光箭头
+        const glow = Math.min(1, ledFrac * 1.2)
+        return (
+          <>
+            {ledLit && <circle r={24} fill={`rgba(255,70,70,${0.15 + glow * 0.3})`} />}
+            <polygon points="-10,-10 8,0 -10,10" fill={ledLit ? '#ff5b5b' : 'none'} stroke={stroke} strokeWidth={2} />
+            <line x1={8} y1={-10} x2={8} y2={10} stroke={stroke} strokeWidth={2.5} />
+            <line x1={-24} y1={0} x2={-10} y2={0} stroke={stroke} strokeWidth={2} />
+            <line x1={8} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
+            {/* 发光箭头：两道向右上的短线 */}
+            <line x1={-4} y1={-14} x2={4} y2={-22} stroke={ledLit ? '#ff8a8a' : T.label} strokeWidth={1.5} strokeLinecap="round" />
+            <polygon points={`${6},${-24} ${-1},${-21} ${2},${-15}`} fill={ledLit ? '#ff8a8a' : T.label} opacity={ledLit ? 1 : 0.5} />
+            <line x1={4} y1={-8} x2={12} y2={-16} stroke={ledLit ? '#ff8a8a' : T.label} strokeWidth={1.5} strokeLinecap="round" />
+            <polygon points={`${14},${-18} ${7},${-15} ${10},${-9}`} fill={ledLit ? '#ff8a8a' : T.label} opacity={ledLit ? 1 : 0.5} />
+            <text x={-14} y={-12} fontSize={9} fill={T.label}>+</text>
+            <text x={12} y={-12} fontSize={9} fill={T.label}>−</text>
           </>
         )
       })()}
@@ -284,6 +308,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`
+    : isLed ? (ledLit ? `${((solved?.current ?? 0) * 1000).toFixed(0)}mA · 发光` : '反向或未导通')
     : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
     : c.kind === 'spdt' ? (c.pos === 0 ? '断开（中位）' : `公共端接 触点${c.pos}`)
@@ -292,9 +317,9 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         : rheoLabel ?? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`)
     : c.closed ? '闭合' : '断开'
   const readout =
-    !isMeter && !isGalvo && !isOhm && solved && solved.current > 1e-6
+    !isMeter && !isGalvo && !isOhm && !isLed && solved && solved.current > 1e-6
       ? `I=${solved.current.toFixed(3)}A · P=${solved.power.toFixed(2)}W`
-      : solved && !isMeter && !isGalvo && !isOhm ? '无电流' : ''
+      : solved && !isMeter && !isGalvo && !isOhm && !isLed ? '无电流' : ''
   return (
     <g transform={`translate(${c.x} ${c.y}) rotate(${c.rot})`}>
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
@@ -573,6 +598,7 @@ export default function App() {
     { kind: 'galvanometer', label: '灵敏电流计' },
     { kind: 'ohmmeter', label: '欧姆表' },
     { kind: 'spdt', label: '单刀双掷' },
+    { kind: 'led', label: '发光二极管' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -899,6 +925,16 @@ export default function App() {
                   </p>
                   <button className="wide" onClick={() => s.rotate(selected.id)}>对调接线柱（± 反向）</button>
                 </>
+              )
+            })()}
+            {selected.kind === 'led' && (() => {
+              const i = selResult?.current ?? 0
+              const dv = selResult?.dv ?? 0
+              return (
+                <p className="warn" style={{ margin: 0 }}>
+                  发光二极管：单向导电（电流 + → −，即 a → b）。
+                  {i > 0.002 ? `正向导通中，I = ${(i * 1000).toFixed(0)}mA` : dv < -0.5 ? '⚠ 反向截止（接反了，不发光）' : '正向电压不足 2V，未导通（需要限流电阻接入电路）'}
+                </p>
               )
             })()}
             {selected.kind === 'spdt' && (() => {

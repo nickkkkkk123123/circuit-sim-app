@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'spdt'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'spdt' | 'led'
 
 export interface BaseComp {
   id: string
@@ -68,11 +68,22 @@ export interface Spdt extends BaseComp {
   pos: 1 | 2 | 0 // 单刀双掷（ON-OFF-ON）：1=接通触点1，2=接通触点2，0=中间位断开
 }
 
+export interface Led extends BaseComp {
+  kind: 'led'
+  // 发光二极管：正向压降 Vf=2V（导通后近似恒压+小电阻），反向截止；电流方向 a→b
+}
+
+// LED 参数：正向压降、导通电阻、截止电阻、亮度基准电流
+export const LED_VF = 2
+export const LED_R_ON = 0.01
+export const LED_R_OFF = 1e9
+export const LED_I_FULL = 0.02
+
 // 灵敏电流计表头（G）：内阻固定 100Ω，量程 ±1mA（双向偏转），也是电表改装的核心部件
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Spdt
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Spdt | Led
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -106,6 +117,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   galvanometer: 24,
   ohmmeter: 24,
   spdt: 28,
+  led: 24,
 }
 
 // 展开态滑动变阻器：金属杆距中心的高度
@@ -175,5 +187,7 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0 }
     case 'spdt':
       return { id, kind, x, y, rot: 0, pos: 1 }
+    case 'led':
+      return { id, kind, x, y, rot: 0 }
   }
 }

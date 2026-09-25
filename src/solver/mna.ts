@@ -1,11 +1,11 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
-import { terminalsOf, METER_G_R } from './types'
+import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter'
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'led'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -74,9 +74,13 @@ export function solve(circuit: Circuit): SolveResult {
   // 防御：忽略端子指向已删元件的悬空导线
   const validWires = wires.filter((w) => idx.has(w.a) && idx.has(w.b))
   const N = nodeIds.length
-  const G: number[][] = Array.from({ length: N }, () => new Array(N).fill(0))
-  const I: number[] = new Array(N).fill(0)
-  const gAdd = (na: string, nb: string, g: number) => {
+  const results: BranchResult[] = []
+
+  // LED（发光二极管）状态迭代：正向导通（Vf 压降 + 小电阻）/反向截止（开路）
+  const leds = comps.filter((c) => c.kind === 'led')
+  const ledOn = new Map<string, boolean>(leds.map((l) => [l.id, false]))
+
+  const gAddM = (G: number[][], na: string, nb: string, g: number) => {
     const a = idx.get(na)!
     const b = idx.get(nb)!
     G[a][a] += g
@@ -84,19 +88,36 @@ export function solve(circuit: Circuit): SolveResult {
     G[a][b] -= g
     G[b][a] -= g
   }
-  // 地面电导，防奇异
-  for (const k of nodeIds) G[idx.get(k)!][idx.get(k)!] += 1e-9
 
-  const branches: Branch[] = []
-  const results: BranchResult[] = []
-  const addRes = (refId: string, kind: Branch['kind'], na: string, nb: string, r: number) => {
-    branches.push({ refId, kind, na, nb, r })
+  // 构建一次网络（支路 + 导纳矩阵 + 注入）：LED 支路状态由 ledOn 决定
+  const buildNet = () => {
+    const branches: Branch[] = []
+    const addRes = (refId: string, kind: Branch['kind'], na: string, nb: string, r: number) => {
+      branches.push({ refId, kind, na, nb, r })
+    }
+    for (const w of validWires) addRes(w.id, 'wire', find(w.a), find(w.b), 0.002)
+    for (const c of comps) addCompBranch(c, branches, addRes)
+    const G: number[][] = Array.from({ length: N }, () => new Array(N).fill(0))
+    const I: number[] = new Array(N).fill(0)
+    // 地面电导，防奇异
+    for (const k of nodeIds) G[idx.get(k)!][idx.get(k)!] += 1e-9
+    for (const b of branches) {
+      const g = 1 / b.r
+      gAddM(G, b.na, b.nb, g)
+      if (b.kind === 'battery' || b.kind === 'led') {
+        const e = (b as { emf: number }).emf!
+        I[idx.get(b.na)!] += e * g
+        I[idx.get(b.nb)!] -= e * g
+      }
+    }
+    return { branches, G, I }
   }
 
-  for (const w of validWires) addRes(w.id, 'wire', find(w.a), find(w.b), 0.002)
-  for (const c of comps) addCompBranch(c)
-
-  function addCompBranch(c: Comp) {
+  function addCompBranch(
+    c: Comp,
+    branches: Branch[],
+    addRes: (refId: string, kind: Branch['kind'], na: string, nb: string, r: number) => void,
+  ) {
     const na = find(`${c.id}:a`)
     const nb = find(`${c.id}:b`)
     switch (c.kind) {
@@ -183,27 +204,46 @@ export function solve(circuit: Circuit): SolveResult {
         addRes(`${c.id}:t2`, c.pos === 2 ? 'switch' : 'switch-open', na, np2, c.pos === 2 ? 0.01 : 1e9)
         break
       }
+      case 'led':
+        // 发光二极管：导通态 = Vf 压降电动势 + 小电阻；截止态 = 开路（外层状态迭代翻转）
+        branches.push({
+          refId: c.id,
+          kind: 'led',
+          na,
+          nb,
+          r: ledOn.get(c.id) ? LED_R_ON : LED_R_OFF,
+          emf: ledOn.get(c.id) ? LED_VF : 0,
+        })
+        break
     }
   }
 
-  for (const b of branches) {
-    const g = 1 / b.r
-    gAdd(b.na, b.nb, g)
-    if (b.kind === 'battery') {
-      const e = (b as { emf: number }).emf
-      I[idx.get(b.na)!] += e * g
-      I[idx.get(b.nb)!] -= e * g
+  let net = buildNet()
+  let V: number[] = []
+  if (leds.length) {
+    // 理想二极管状态迭代：解 → 检查各 LED 电压/电流一致性 → 翻转状态重解（最多 20 轮）
+    for (let guard = 0; guard < 20; guard++) {
+      V = solveGauss(net.G, net.I)
+      let flipped = false
+      for (const l of leds) {
+        const dv = V[idx.get(`${l.id}:a`)!] - V[idx.get(`${l.id}:b`)!]
+        const on = ledOn.get(l.id)!
+        if (on && (dv - LED_VF) / LED_R_ON < -1e-9) { ledOn.set(l.id, false); flipped = true }
+        else if (!on && dv > LED_VF) { ledOn.set(l.id, true); flipped = true }
+      }
+      if (!flipped) break
+      net = buildNet()
+      V = solveGauss(net.G, net.I)
     }
+  } else {
+    V = solveGauss(net.G, net.I)
   }
-
-  // 高斯消元改走公共函数（欧姆表辅助解也要用）
-  const V = solveGauss(G, I)
 
   const byComp: Record<string, BranchResult> = {}
-  for (const b of branches) {
+  for (const b of net.branches) {
     const dv = V[idx.get(b.na)!] - V[idx.get(b.nb)!]
-    // 电源支路含电动势：I = (emf − dv)/r；纯电阻支路：I = dv/r
-    const current = b.kind === 'battery' ? Math.abs((b.emf! - dv) / b.r) : Math.abs(dv / b.r)
+    // 电源/LED 支路含电动势：I = (emf − dv)/r；纯电阻支路：I = dv/r
+    const current = b.kind === 'battery' || b.kind === 'led' ? Math.abs((b.emf! - dv) / b.r) : Math.abs(dv / b.r)
     const power = Math.abs(current * dv)
     results.push({ refId: b.refId, kind: b.kind, dv, current, power })
     // 内部辅助支路（refId 带 :）与导线不入 byComp
@@ -259,7 +299,7 @@ export function solve(circuit: Circuit): SolveResult {
       const Ia = new Array(N).fill(0)
       Ia[idx.get(`${o.id}:a`)!] += 1
       Ia[idx.get(`${o.id}:b`)!] -= 1
-      const Vt = solveGauss(G, Ia)
+      const Vt = solveGauss(net.G, Ia)
       ohm[o.id] = Math.abs(Vt[idx.get(`${o.id}:a`)!] - Vt[idx.get(`${o.id}:b`)!])
     }
   }
