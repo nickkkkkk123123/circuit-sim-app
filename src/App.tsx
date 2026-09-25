@@ -554,9 +554,6 @@ export default function App() {
 
   const selected = s.comps.find((c) => c.id === s.selectedId) ?? null
   const selResult = s.selectedId ? result.byComp[s.selectedId] : undefined
-  // 收起保护：展开态滑动变阻器的 c/d 上是否还挂着导线
-  const collapseBlocked = !!selected && selected.kind === 'rheostat' && selected.expanded &&
-    s.wires.some((w) => [w.a, w.b].includes(`${selected.id}:c`) || [w.a, w.b].includes(`${selected.id}:d`))
 
   return (
     <div className="app">
@@ -784,15 +781,12 @@ export default function App() {
                     onChange={(e) => s.updateParam(selected.id, 'pos', +e.target.value / 100)} />
                 </label>
                 <button className="wide"
-                  disabled={selected.expanded && collapseBlocked}
                   onClick={() => s.setExpanded(selected.id, !selected.expanded)}>
-                  {selected.expanded ? '收起为两接线柱' : '展开为四接线柱'}
+                  {selected.expanded ? '收起为三接线柱' : '展开为四接线柱'}
                 </button>
                 {selected.expanded && (
                   <p className="warn" style={{ margin: 0 }}>
-                    {collapseBlocked
-                      ? '⚠ 金属杆端子 c/d 上还接着导线，先删除才能收起'
-                      : '四接线柱：a/b=下方电阻丝两端，c/d=上方金属杆。一上一下=变阻，两下=全阻值，两上=导线'}
+                    四接线柱：a/b=下方电阻丝两端，c/d=上方金属杆。一上一下=变阻，两下=全阻值，两上=导线
                   </p>
                 )}
                 {!selected.expanded && (

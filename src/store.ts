@@ -92,26 +92,24 @@ export const useEditor = create<EditorState>((set, get) => ({
     })),
 
   setExpanded: (id, expanded) => {
-    // 收起时若有导线挂在金属杆端子 c/d 上，拒绝（导线会悬空）
-    if (!expanded) {
-      const attached = get().wires.some((w) => {
-        const ends = [w.a, w.b]
-        return ends.includes(`${id}:c`) || ends.includes(`${id}:d`)
-      })
-      if (attached) return false
-    }
+    // 切换时端子迁移（电气等价）：收起 c/d→p（杆直通滑片），展开 p→c；迁重自动去重
+    const remap = (t: string) =>
+      expanded
+        ? (t === `${id}:p` ? `${id}:c` : t)
+        : (t === `${id}:c` || t === `${id}:d` ? `${id}:p` : t)
+    let wires = get().wires.map((w) => ({ ...w, a: remap(w.a), b: remap(w.b) }))
+    const seen = new Set<string>()
+    wires = wires.filter((w) => {
+      const k = [w.a, w.b].sort().join('|')
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
     set((s) => ({
       comps: s.comps.map((c) =>
         c.id === id && c.kind === 'rheostat' ? ({ ...c, expanded } as Comp) : c,
       ),
-      // 展开时 compact 的滑片端子 p 消失 → 挂在 p 上的导线迁移到杆端 c（电气等价：都在杆上）
-      wires: expanded
-        ? get().wires.map((w) => ({
-            ...w,
-            a: w.a === `${id}:p` ? `${id}:c` : w.a,
-            b: w.b === `${id}:p` ? `${id}:c` : w.b,
-          }))
-        : get().wires,
+      wires,
     }))
     return true
   },
