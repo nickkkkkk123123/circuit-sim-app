@@ -7,6 +7,15 @@ import { THEME as T } from './theme'
 const W = 1600
 const H = 900
 
+/** 欧姆读数格式化：∞ / MΩ / kΩ / Ω */
+function fmtOhm(r: number): string {
+  if (r >= 1e7) return '∞'
+  if (r >= 1e6) return (r / 1e6).toFixed(1) + 'MΩ'
+  if (r >= 1000) return (r / 1000).toFixed(2) + 'kΩ'
+  if (r >= 10) return r.toFixed(1) + 'Ω'
+  return r.toFixed(2) + 'Ω'
+}
+
 const KIND_NAME: Record<CompKind, string> = {
   battery: '电源',
   resistor: '定值电阻',
@@ -14,6 +23,7 @@ const KIND_NAME: Record<CompKind, string> = {
   voltmeter: '电压表',
   ammeter: '电流表',
   galvanometer: '灵敏电流计',
+  ohmmeter: '欧姆表',
   bulb: '小灯泡',
   switch: '开关',
 }
@@ -30,7 +40,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen }: {
+function CompSymbol({ c, selected, solved, ohmReading, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -39,6 +49,7 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
   onSliderPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onDialOpen?: (c: Comp) => void
+  ohmReading?: number
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -48,6 +59,8 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
   const isGalvo = c.kind === 'galvanometer'
   const galvoI = isGalvo ? (solved?.dv ?? 0) / METER_G_R : 0 // 带符号电流（A），正 = a→b
   const galvoPegged = isGalvo && Math.abs(galvoI) > METER_G_IG
+  const isOhm = c.kind === 'ohmmeter'
+  const ohmR = isOhm ? (ohmReading ?? Infinity) : 0
   const hitHalf = isMeter && c.expanded && !c.ideal ? 52 : d
   const body = (
     <>
@@ -91,6 +104,25 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
                 <text x={0} y={26} textAnchor="middle" fontSize={10} fill={T.label}>分流电阻</text>
               </>
             )}
+          </>
+        )
+      })()}
+      {isOhm && (() => {
+        // 欧姆表：经典 Ω 符号，读数上方显示（点击 → 非线性刻度表盘）
+        return (
+          <>
+            <text
+              x={0} y={-28} textAnchor="middle" fontSize={13} fontWeight={600}
+              fill={ohmR < 1e7 ? T.readout : T.label}
+              style={{ cursor: 'pointer' }}
+              onPointerDown={(e) => { e.stopPropagation(); onDialOpen?.(c) }}
+            >
+              {fmtOhm(ohmR)}
+              <title>点击查看表盘</title>
+            </text>
+            <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
+            <text x={0} y={8} textAnchor="middle" fontSize={20} fontWeight={700} fill={stroke}>Ω</text>
+            <text x={0} y={34} textAnchor="middle" fontSize={10} fill={T.label}>断电测电阻</text>
           </>
         )
       })()}
@@ -236,13 +268,14 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSlide
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? (c.ideal ? '理想' : '实际①')
+    : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
     : c.kind === 'rheostat' ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω`
     : c.closed ? '闭合' : '断开'
   const readout =
-    !isMeter && !isGalvo && solved && solved.current > 1e-6
+    !isMeter && !isGalvo && !isOhm && solved && solved.current > 1e-6
       ? `I=${solved.current.toFixed(3)}A · P=${solved.power.toFixed(2)}W`
-      : solved && !isMeter && !isGalvo ? '无电流' : ''
+      : solved && !isMeter && !isGalvo && !isOhm ? '无电流' : ''
   return (
     <g transform={`translate(${c.x} ${c.y}) rotate(${c.rot})`}>
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
@@ -515,6 +548,7 @@ export default function App() {
     { kind: 'voltmeter', label: '电压表' },
     { kind: 'ammeter', label: '电流表' },
     { kind: 'galvanometer', label: '灵敏电流计' },
+    { kind: 'ohmmeter', label: '欧姆表' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -654,6 +688,7 @@ export default function App() {
                 onSliderPointerDown={onSliderPointerDown}
                 onSwitchPointerDown={onSwitchPointerDown}
                 onDialOpen={(c) => setDialFor(c.id)}
+                ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -811,6 +846,17 @@ export default function App() {
                 </>
               )
             })()}
+            {selected.kind === 'ohmmeter' && (() => {
+              const r = result.ohm?.[selected.id] ?? Infinity
+              const live = s.comps.some((k) => k.kind === 'battery' && k.emf > 0)
+              return (
+                <p className="warn" style={{ margin: 0 }}>
+                  Ω 档：读数 = 两端间等效电阻（所有电源已置零）。
+                  {live ? '⚠ 当前电路带电，读数为"看进去的等效电阻"——要测单个元件请断开一端。' : '可跨接在元件两端直接测量。'}
+                  {r >= 1e7 ? ' 当前两端断路（∞）。' : ''}
+                </p>
+              )
+            })()}
             {selected.kind === 'galvanometer' && (() => {
               const iSigned = (selResult?.dv ?? 0) / METER_G_R
               const mA = Math.abs(iSigned) * 1000
@@ -846,67 +892,82 @@ export default function App() {
 
       {dialFor && (() => {
         // 表盘读数练习弹窗：复刻学生实验电表——双排刻度（上=大量程，下=小量程）、30 小格
-        // 灵敏电流计为特例：中心零位 ±1mA 双向刻度
+        // 灵敏电流计为特例：中心零位 ±1mA 双向刻度；欧姆表为特例：非线性反向刻度（0 在右，∞ 在左）
         const c = s.comps.find((k) => k.id === dialFor)
-        if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter' && c.kind !== 'galvanometer') || (c.kind !== 'galvanometer' && c.customRange)) return null
+        if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter' && c.kind !== 'galvanometer' && c.kind !== 'ohmmeter') || (c.kind !== 'galvanometer' && c.kind !== 'ohmmeter' && c.customRange)) return null
         const isV = c.kind === 'voltmeter'
         const isG = c.kind === 'galvanometer'
-        const unit = isG ? 'mA' : isV ? 'V' : 'A'
+        const isO = c.kind === 'ohmmeter'
+        const unit = isG ? 'mA' : isO ? 'Ω' : isV ? 'V' : 'A'
         const solvedM = result.byComp[c.id]
         const signedG = isG ? (solvedM?.dv ?? 0) / METER_G_R * 1000 : 0 // 带符号 mA
-        const val = isG ? Math.abs(signedG) : Math.abs(isV ? solvedM?.dv ?? 0 : solvedM?.current ?? 0)
+        const val = isG ? Math.abs(signedG) : isO ? (result.ohm?.[c.id] ?? Infinity) : Math.abs(isV ? solvedM?.dv ?? 0 : solvedM?.current ?? 0)
         const R = 100, CX = 140, CY = 148
         const dir = (f: number, r: number) => {
           const deg = (-50 + 100 * f) * Math.PI / 180
           return { x: CX + Math.sin(deg) * r, y: CY - Math.cos(deg) * r }
         }
         const frac = isG
-          ? Math.max(0, Math.min(1, (signedG / METER_G_IG + 1) / 2)) // -1mA→0，+1mA→1
+          ? Math.max(0, Math.min(1, (signedG / METER_G_IG + 1) / 2))
+          : isO
+          ? Math.max(0, Math.min(1, 10 / (10 + val))) // 非线性：f = R中值/(R中值+R)，0Ω 在右、∞ 在左
           : Math.max(0, Math.min(1, val / c.range))
         const nd = dir(frac, R - 6)
+        const ohmTicks = [0, 2, 5, 10, 20, 50, 200, 1e9].map((r) => ({ r, f: 10 / (10 + r), label: r >= 1e9 ? '∞' : String(r) }))
         const hiNums = isG ? [-1, -0.5, 0, 0.5, 1] : isV ? [0, 5, 10, 15] : [0, 1, 2, 3]
         const loNums = isG ? ['−1mA', '−0.5', '0', '+0.5', '+1mA'] : isV ? [0, 1, 2, 3] : [0, 0.2, 0.4, 0.6]
         const numFs = isG ? [0, 0.25, 0.5, 0.75, 1] : [0, 10 / 30, 20 / 30, 1]
         const ticks = []
-        if (isG) {
+        if (isO) {
+          for (const t of ohmTicks) ticks.push({ f: t.f, o: dir(t.f, R), i: dir(t.f, R - 13), major: true, lbl: t.label })
+        } else if (isG) {
           for (let i = 0; i <= 20; i++) {
             const f = i / 20
             const major = i % 5 === 0
-            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid7(f) ? 9 : 5)), major })
+            const mA = (f * 2 - 1) * 1000
+            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : Math.abs(mA % 0.5) < 1e-9 ? 9 : 5)), major, lbl: major ? ['−1', '−0.5', '0', '+0.5', '+1'][i / 5] : undefined })
           }
-          function mid7(f: number) { const mA = (f * 2 - 1) * 1000; return Math.abs(mA % 0.5) < 1e-9 }
         } else {
           for (let i = 0; i <= 30; i++) {
             const f = i / 30
             const major = i % 10 === 0
             const mid = i % 5 === 0
-            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major })
+            ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major, lbl: major ? String(hiNums[i / 10]) : undefined })
           }
         }
-        const numPos = isG ? [0, 0.25, 0.5, 0.75, 1] : [0, 10 / 30, 20 / 30, 1]
         return (
           <div className="dial-overlay" onPointerDown={() => setDialFor(null)}>
             <div className="dial-card" onPointerDown={(e) => e.stopPropagation()}>
-              <h3>{isG ? '灵敏电流计 · 量程 −1~+1mA（中心零位）' : `${isV ? '电压表' : '电流表'} · 量程 0~${c.range}${unit}`}</h3>
+              <h3>{isO ? '欧姆表 · 中值 10Ω（断电测电阻）' : isG ? '灵敏电流计 · 量程 −1~+1mA（中心零位）' : `${isV ? '电压表' : '电流表'} · 量程 0~${c.range}${unit}`}</h3>
               <svg width={290} height={168} viewBox="0 0 280 168">
                 <rect x={6} y={2} width={268} height={164} rx={10} fill="#f7f8fa" stroke="#c9d2e0" />
                 {ticks.map((t, i) => (
-                  <line key={i} x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#2a3140" strokeWidth={t.major ? 2 : 1} />
-                ))}
-                {(isG ? numFs.map((f, i) => ({ f, hi: hiNums[i], lo: loNums[i] })) : numPos.map((f, i) => ({ f, hi: hiNums[i], lo: loNums[i] }))).map((n, i) => (
                   <g key={i}>
-                    <text x={dir(n.f, R - 22).x} y={dir(n.f, R - 22).y} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140">{n.hi}</text>
-                    {!isG && <text x={dir(n.f, R - 38).x} y={dir(n.f, R - 38).y} textAnchor="middle" fontSize={10} fill="#5b6472">{n.lo}</text>}
+                    <line x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#2a3140" strokeWidth={t.major ? 2 : 1} />
+                    {t.lbl !== undefined && (
+                      <text x={dir(t.f, R - 24).x} y={dir(t.f, R - 24).y + 4} textAnchor="middle" fontSize={isO ? 10 : 12} fontWeight={700} fill="#2a3140">{t.lbl}</text>
+                    )}
+                  </g>
+                ))}
+                {!isO && numFs.map((f, i) => (
+                  <g key={'n' + i}>
+                    <text x={dir(f, R - 22).x} y={dir(f, R - 22).y} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140">{hiNums[i]}</text>
+                    {!isG && <text x={dir(f, R - 38).x} y={dir(f, R - 38).y} textAnchor="middle" fontSize={10} fill="#5b6472">{loNums[i]}</text>}
                   </g>
                 ))}
                 <line x1={CX} y1={CY} x2={nd.x} y2={nd.y} stroke="#c0392b" strokeWidth={2.5} strokeLinecap="round" />
                 <circle cx={CX} cy={CY} r={5} fill="#c0392b" />
-                <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isG ? 'G' : isV ? 'V' : 'A'}</text>
+                <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isO ? 'Ω' : isG ? 'G' : isV ? 'V' : 'A'}</text>
               </svg>
               {isG ? (
                 <div className="dial-rows">
                   <span>指针{signedG > 0 ? '右偏（电流 + → −）' : signedG < 0 ? '左偏（电流 − → +）' : '居中（无电流）'}</span>
                   <span>偏转满偏的 {(Math.abs(signedG / METER_G_IG) * 100).toFixed(0)}%{Math.abs(signedG) > METER_G_IG ? ' · ⚠ 超量程' : ''}</span>
+                </div>
+              ) : isO ? (
+                <div className="dial-rows">
+                  <span>读数：{fmtOhm(val)}</span>
+                  <span>刻度不均匀且反向：0Ω 在右端，∞ 在左端（中值 10Ω）</span>
                 </div>
               ) : (
                 <div className="dial-rows">
@@ -923,7 +984,7 @@ export default function App() {
                   )}
                 </div>
               )}
-              <div className="dial-val">{val.toFixed(2)}{unit}</div>
+              <div className="dial-val">{isO ? fmtOhm(val) : val.toFixed(2)}{unit}</div>
               <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
             </div>
           </div>

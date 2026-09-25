@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter'
 
 export interface BaseComp {
   id: string
@@ -58,11 +58,16 @@ export interface Galvanometer extends BaseComp {
   // 灵敏电流计：内阻 Rg（100Ω）、量程 ±Ig（1mA）固定；电流方向决定指针偏转方向
 }
 
+export interface Ohmmeter extends BaseComp {
+  kind: 'ohmmeter'
+  // 欧姆表：读数 = 零源辅助解中两端间等效电阻；主解中呈高阻开路
+}
+
 // 灵敏电流计表头（G）：内阻固定 100Ω，量程 ±1mA（双向偏转），也是电表改装的核心部件
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -93,6 +98,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   voltmeter: 24,
   ammeter: 24,
   galvanometer: 24,
+  ohmmeter: 24,
 }
 
 // 展开态滑动变阻器：金属杆距中心的高度
@@ -146,6 +152,8 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
     case 'ammeter':
       return { id, kind, x, y, rot: 0, r: 0.1, ideal: true, range: 0.6, customRange: false }
     case 'galvanometer':
+      return { id, kind, x, y, rot: 0 }
+    case 'ohmmeter':
       return { id, kind, x, y, rot: 0 }
   }
 }

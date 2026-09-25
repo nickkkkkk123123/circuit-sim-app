@@ -282,4 +282,40 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires })
     expect(r.byComp['g1'].dv).toBeLessThan(0)
   })
+
+  it('欧姆表：孤立测 10Ω 电阻 → 读数 ≈ 10Ω（电源置零不影响）', () => {
+    const comps: Comp[] = [
+      { id: 'o1', kind: 'ohmmeter', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'o1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'o1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.ohm!['o1']).toBeCloseTo(10, 1)
+  })
+
+  it('欧姆表：带电回路中测 r1 → 读数 = r1 ∥ (电源内阻+导线)，复现"必须断开一端"', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 'o1', kind: 'ohmmeter', x: 0, y: 0, rot: 0 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+      { id: 'w3', a: 'r1:a', b: 'o1:a' },
+      { id: 'w4', a: 'o1:b', b: 'r1:b' },
+    ]
+    const r = solve({ comps, wires })
+    // 零源后：r1 与 (0.5Ω 电源内阻 + 导线) 并联
+    expect(r.ohm!['o1']).toBeCloseTo(10 * 0.504 / 10.504, 2)
+  })
+
+  it('欧姆表：两端悬空 → 读数 ∞ 级别（>1MΩ）', () => {
+    const comps: Comp[] = [{ id: 'o1', kind: 'ohmmeter', x: 0, y: 0, rot: 0 }]
+    const r = solve({ comps, wires: [] })
+    expect(r.ohm!['o1']).toBeGreaterThan(1e6)
+  })
 })

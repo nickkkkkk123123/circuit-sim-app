@@ -5,7 +5,7 @@ import { terminalsOf, METER_G_R } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer'
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -15,6 +15,7 @@ export interface SolveResult {
   branches: BranchResult[]
   byComp: Record<string, BranchResult> // 元件 id → 结果（导线不在内）
   openCircuit: boolean // 是否存在断路（开关断开）——灯泡等无电流
+  ohm?: Record<string, number> // 欧姆表读数：两端间等效电阻（零源辅助求解），Ω
 }
 
 // 内部分支：携带拓扑与参数
@@ -39,6 +40,29 @@ function buildNodes(circuit: Circuit) {
     if (c.kind === 'voltmeter' && c.expanded && !c.ideal) nodeIds.push(`${c.id}:__m`) // 展开态：G 与分压电阻的串联点
   }
   return { nodeIds: [...new Set(nodeIds)] }
+}
+
+// 高斯消元（列主元）——主解与欧姆表零源辅助解共用
+function solveGauss(G: number[][], I: number[]): number[] {
+  const N = G.length
+  const A = G.map((row, i) => [...row, I[i]])
+  for (let col = 0; col < N; col++) {
+    let piv = col
+    for (let r = col + 1; r < N; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r
+    ;[A[col], A[piv]] = [A[piv], A[col]]
+    if (Math.abs(A[col][col]) < 1e-12) continue
+    for (let r = 0; r < N; r++) {
+      if (r === col) continue
+      const f = A[r][col] / A[col][col]
+      for (let k = col; k <= N; k++) A[r][k] -= f * A[col][k]
+    }
+  }
+  const V = new Array(N).fill(0)
+  for (let i = 0; i < N; i++) {
+    const diag = A[i][i]
+    if (Math.abs(diag) > 1e-12) V[i] = A[i][N] / diag
+  }
+  return V
 }
 
 export function solve(circuit: Circuit): SolveResult {
@@ -147,6 +171,10 @@ export function solve(circuit: Circuit): SolveResult {
         // 灵敏电流计：表头本体（Rg=100Ω）。dv 保留符号 → 电流方向决定指针左/右偏
         addRes(c.id, 'galvanometer', na, nb, METER_G_R)
         break
+      case 'ohmmeter':
+        // 欧姆表在主解中=高阻开路（不干扰电路）；读数走零源辅助求解
+        addRes(c.id, 'ohmmeter', na, nb, 1e9)
+        break
     }
   }
 
@@ -160,24 +188,8 @@ export function solve(circuit: Circuit): SolveResult {
     }
   }
 
-  // 高斯消元（列主元）
-  const A = G.map((row, i) => [...row, I[i]])
-  for (let col = 0; col < N; col++) {
-    let piv = col
-    for (let r = col + 1; r < N; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r
-    ;[A[col], A[piv]] = [A[piv], A[col]]
-    if (Math.abs(A[col][col]) < 1e-12) continue
-    for (let r = 0; r < N; r++) {
-      if (r === col) continue
-      const f = A[r][col] / A[col][col]
-      for (let k = col; k <= N; k++) A[r][k] -= f * A[col][k]
-    }
-  }
-  const V = new Array(N).fill(0)
-  for (let i = 0; i < N; i++) {
-    const diag = A[i][i]
-    if (Math.abs(diag) > 1e-12) V[i] = A[i][N] / diag
-  }
+  // 高斯消元改走公共函数（欧姆表辅助解也要用）
+  const V = solveGauss(G, I)
 
   const byComp: Record<string, BranchResult> = {}
   for (const b of branches) {
@@ -220,5 +232,20 @@ export function solve(circuit: Circuit): SolveResult {
   }
 
   const openCircuit = comps.some((c) => c.kind === 'switch' && !c.closed)
-  return { branches: results, byComp, openCircuit }
+
+  // 欧姆表零源辅助求解：电池电动势置零（退化为内阻）、欧姆表本体开路，
+  // 向表笔注入 1A 测试电流 → 两端电压差 = 看进去的等效电阻（戴维南电阻）
+  const ohms = comps.filter((c) => c.kind === 'ohmmeter')
+  let ohm: Record<string, number> | undefined
+  if (ohms.length) {
+    ohm = {}
+    for (const o of ohms) {
+      const Ia = new Array(N).fill(0)
+      Ia[idx.get(`${o.id}:a`)!] += 1
+      Ia[idx.get(`${o.id}:b`)!] -= 1
+      const Vt = solveGauss(G, Ia)
+      ohm[o.id] = Math.abs(Vt[idx.get(`${o.id}:a`)!] - Vt[idx.get(`${o.id}:b`)!])
+    }
+  }
+  return { branches: results, byComp, openCircuit, ohm }
 }
