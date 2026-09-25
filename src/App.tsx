@@ -376,6 +376,39 @@ function UiIcon({ name }: { name: 'sun' | 'moon' | 'collapse' | 'expand' }) {
   )
 }
 
+/** 表针：欠阻尼弹簧动画——换量程/电流突变时过冲回摆再收敛，像真实电表的机械指针 */
+function Needle({ target, CX, CY, R }: { target: number; CX: number; CY: number; R: number }) {
+  const clamp = (x: number) => Math.max(-0.14, Math.min(1.12, x))
+  const st = useRef({ x: clamp(target), v: 0, t: clamp(target) })
+  st.current.t = clamp(target)
+  const [, tickRender] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    const step = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.032)
+      last = now
+      const s = st.current
+      s.v += (140 * (s.t - s.x) - 9 * s.v) * dt // 欠阻尼弹簧：过冲 ~28% 后回摆收敛
+      s.x += s.v * dt
+      if (s.x > 1.12) { s.x = 1.12; if (s.v > 0) s.v = 0 } // 打满挡针
+      if (s.x < -0.14) { s.x = -0.14; if (s.v < 0) s.v = 0 }
+      tickRender((n) => n + 1)
+      if (Math.abs(s.t - s.x) > 0.0005 || Math.abs(s.v) > 0.003) raf = requestAnimationFrame(step)
+      else raf = 0
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target])
+  const deg = ((-50 + 100 * st.current.x) * Math.PI) / 180
+  return (
+    <>
+      <line x1={CX} y1={CY} x2={CX + Math.sin(deg) * (R - 6)} y2={CY - Math.cos(deg) * (R - 6)} stroke="#c0392b" strokeWidth={2.5} strokeLinecap="round" />
+      <circle cx={CX} cy={CY} r={5} fill="#c0392b" />
+    </>
+  )
+}
+
 /** 元件库缩略图：按元件类型画迷你符号（跟随主题变量） */
 function MiniSymbol({ kind }: { kind: CompKind }) {
   const st = { stroke: 'var(--ink)', strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const }
@@ -557,12 +590,9 @@ export default function App() {
         const cur = st.comps.find((k) => k.id === dialFor)
         if (cur && (cur.kind === 'voltmeter' || cur.kind === 'ammeter')) {
           const ps: MeterPosts = cur.posts ?? { black: 'neg', red: cur.range === (cur.kind === 'voltmeter' ? 15 : 3) ? 'high' : 'low' }
-          const otherLead = lugDrag.lead === 'black' ? 'red' : 'black'
-          if (ps[otherLead] !== best.post) {
-            st.updateParam(dialFor, 'posts', { ...ps, [lugDrag.lead]: best.post })
-            // 表笔位置变了，量程跟着变（红笔决定量程；黑笔只在 − 时才有效）
-            if (lugDrag.lead === 'red') st.updateParam(dialFor, 'range', best.post === 'high' ? (cur.kind === 'voltmeter' ? 15 : 3) : (cur.kind === 'voltmeter' ? 3 : 0.6))
-          }
+          st.updateParam(dialFor, 'posts', { ...ps, [lugDrag.lead]: best.post })
+          // 红笔决定量程（黑笔只在 − 时才有效）
+          if (lugDrag.lead === 'red') st.updateParam(dialFor, 'range', best.post === 'high' ? (cur.kind === 'voltmeter' ? 15 : 3) : (cur.kind === 'voltmeter' ? 3 : 0.6))
         }
       }
       setLugDrag(null)
@@ -1205,18 +1235,25 @@ export default function App() {
         const unit = isG ? 'mA' : isO ? 'Ω' : isV ? 'V' : 'A'
         const solvedM = result.byComp[c.id]
         const signedG = isG ? (solvedM?.dv ?? 0) / METER_G_R * 1000 : 0 // 带符号 mA
-        const val = isG ? Math.abs(signedG) : isO ? (result.ohm?.[c.id] ?? Infinity) : Math.abs(isV ? solvedM?.dv ?? 0 : solvedM?.current ?? 0)
+        const mInfo = isG || isO ? null : meterRangeOf(c)
+        const reversed = mInfo?.reversed ?? false
+        const unconnected = mInfo === null && !isG && !isO
+        // 带符号显示值：电压 = dv；电流 = dv/支路内阻（红黑接反时整体取反 → 指针反偏）
+        const branchR = (!isV && !isG && !isO) ? (c.ideal ? 1e-3 : Math.max(c.r * (c.posts && mInfo ? 0.6 / mInfo.range : 1), 1e-3)) : 1
+        const sVal = isG || isO ? Math.abs(signedG) : (reversed ? -1 : 1) * (isV ? (solvedM?.dv ?? 0) : (solvedM?.dv ?? 0) / branchR)
+        const val = Math.abs(sVal) || (isO ? (result.ohm?.[c.id] ?? Infinity) : 0)
+        const over = isG ? Math.abs(signedG) > METER_G_IG : !isO && Math.abs(sVal) > c.range + 1e-9
+        const hiActive = !isG && !isO && c.range === (isV ? 15 : 3) // 当前量程对应哪排刻度数字
         const R = 100, CX = 140, CY = 148
         const dir = (f: number, r: number) => {
           const deg = (-50 + 100 * f) * Math.PI / 180
           return { x: CX + Math.sin(deg) * r, y: CY - Math.cos(deg) * r }
         }
-        const frac = isG
-          ? Math.max(0, Math.min(1, (signedG / METER_G_IG + 1) / 2))
+        const needleTarget = isG
+          ? (signedG / METER_G_IG + 1) / 2
           : isO
-          ? Math.max(0, Math.min(1, 10 / (10 + val))) // 非线性：f = R中值/(R中值+R)，0Ω 在右、∞ 在左
-          : Math.max(0, Math.min(1, val / c.range))
-        const nd = dir(frac, R - 6)
+          ? 10 / (10 + val) // 非线性：f = R中值/(R中值+R)，0Ω 在右、∞ 在左
+          : unconnected ? 0 : sVal / c.range // 可为负（反偏）、可超 1（打满）——物理动画里钳位
         const ohmTicks = [0, 2, 5, 10, 20, 50, 200, 1e9].map((r) => ({ r, f: 10 / (10 + r), label: r >= 1e9 ? '∞' : String(r) }))
         const hiNums = isG ? [-1, -0.5, 0, 0.5, 1] : isV ? [0, 5, 10, 15] : [0, 1, 2, 3]
         const loNums = isG ? ['−1mA', '−0.5', '0', '+0.5', '+1mA'] : isV ? [0, 1, 2, 3] : [0, 0.2, 0.4, 0.6]
@@ -1275,12 +1312,12 @@ export default function App() {
                 ))}
                 {!isO && numFs.map((f, i) => (
                   <g key={'n' + i}>
-                    <text x={dir(f, R - 22).x} y={dir(f, R - 22).y} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140">{hiNums[i]}</text>
-                    {!isG && <text x={dir(f, R - 38).x} y={dir(f, R - 38).y} textAnchor="middle" fontSize={10} fill="#5b6472">{loNums[i]}</text>}
+                    {/* 当前量程对应的那排数字加深，另一排变浅——解决"数字重复"的观感 */}
+                    <text x={dir(f, R - 20).x} y={dir(f, R - 20).y} textAnchor="middle" fontSize={12} fontWeight={700} fill={hiActive ? '#2a3140' : '#b9c2d4'}>{hiNums[i]}</text>
+                    {!isG && <text x={dir(f, R - 40).x} y={dir(f, R - 40).y} textAnchor="middle" fontSize={10} fontWeight={hiActive ? 400 : 700} fill={hiActive ? '#b9c2d4' : '#2a3140'}>{loNums[i]}</text>}
                   </g>
                 ))}
-                <line x1={CX} y1={CY} x2={nd.x} y2={nd.y} stroke="#c0392b" strokeWidth={2.5} strokeLinecap="round" />
-                <circle cx={CX} cy={CY} r={5} fill="#c0392b" />
+                <Needle target={needleTarget} CX={CX} CY={CY} R={R} />
                 <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isO ? 'Ω' : isG ? 'G' : isV ? 'V' : 'A'}</text>
               </svg>
               {isG ? (
@@ -1297,13 +1334,13 @@ export default function App() {
                 <div className="dial-rows">
                   {isV ? (
                     <>
-                      <span>按 0~15V 刻度读：{(val * 15 / c.range).toFixed(1)}V（每小格 0.5V）</span>
-                      <span>按 0~3V 刻度读：{(val * 3 / c.range).toFixed(2)}V（每小格 0.1V）</span>
+                      <span>按 0~15V 刻度读：{(sVal * 15 / c.range).toFixed(1)}V（每小格 0.5V）</span>
+                      <span>按 0~3V 刻度读：{(sVal * 3 / c.range).toFixed(2)}V（每小格 0.1V）</span>
                     </>
                   ) : (
                     <>
-                      <span>按 0~3A 刻度读：{(val * 3 / c.range).toFixed(2)}A（每小格 0.1A）</span>
-                      <span>按 0~0.6A 刻度读：{(val * 0.6 / c.range).toFixed(3)}A（每小格 0.02A）</span>
+                      <span>按 0~3A 刻度读：{(sVal * 3 / c.range).toFixed(2)}A（每小格 0.1A）</span>
+                      <span>按 0~0.6A 刻度读：{(sVal * 0.6 / c.range).toFixed(3)}A（每小格 0.02A）</span>
                     </>
                   )}
                 </div>
@@ -1325,6 +1362,7 @@ export default function App() {
                         {(['black', 'red'] as const).map((lead) => (
                           ps[lead] === p && !(lugDrag && lugDrag.lead === lead) && (
                             <span key={lead} className={'lug ' + lead} title="按住拖动表笔，靠近接线柱松手吸附"
+                              style={ps.black === p && ps.red === p ? { transform: `translateX(${lead === 'black' ? '-105%' : '-5%'})` } : undefined}
                               onPointerDown={(e) => { e.preventDefault(); setLugDrag({ lead, x: e.clientX, y: e.clientY }) }} />
                           )
                         ))}
@@ -1334,11 +1372,17 @@ export default function App() {
                 )
               })()}
               <p className="dial-hint">
-                {isG || isO ? '' : meterRangeOf(c) === null
+                {isG || isO ? '' : unconnected
                   ? '⚠ 表笔没接好：黑笔接 − 公共端，红笔接任一量程柱'
+                  : reversed
+                  ? '⚠ 红黑接反：电流反向流过表头，指针反偏、读数为负——对调两根表笔即可恢复'
+                  : over
+                  ? '⚠ 超量程：指针打满，真实电表可能被烧坏——换大量程或减小电流/电压'
                   : '两根表笔都能拖动：靠近接线柱松手吸附；黑笔接 −，红笔接量程柱。开着窗口也能继续实验'}
               </p>
-              <div className="dial-val">{!isG && !isO && meterRangeOf(c) === null ? '--' : (isO ? fmtOhm(val) : val.toFixed(2))}{unit}</div>
+              <div className="dial-val" style={reversed || unconnected ? { color: 'var(--danger)' } : undefined}>
+                {unconnected ? '--' : (isO ? fmtOhm(val) : (isG ? signedG : sVal).toFixed(2))}{unit}
+              </div>
               <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
             </div>
             {lugDrag && (() => {

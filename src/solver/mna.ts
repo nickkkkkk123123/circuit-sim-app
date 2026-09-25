@@ -163,14 +163,14 @@ export function solve(circuit: Circuit): SolveResult {
       }
       case 'voltmeter': {
         // 并联式电压表：高内阻支路，读数 = 两端电压
-        // 学生表接线柱：黑笔必须在 − 且红笔在量程柱；否则表笔没接好 → 支路断开（读数无效）
-        const vRange = meterRangeOf(c)
-        if (vRange === null) {
+        // 学生表接线柱：未接好（null）→ 支路断开（读数无效）；接反时支路仍导通（指针反偏由显示层处理）
+        const vm = meterRangeOf(c)
+        if (vm === null) {
           addRes(c.id, 'voltmeter', na, nb, 1e9)
           break
         }
         // 大量程 = 分压电阻更大 → 内阻按量程等比放大（3V 基准）
-        const vScale = c.posts ? vRange / 3 : 1
+        const vScale = c.posts ? vm.range / 3 : 1
         if (c.expanded && !c.ideal) {
           // 展开态：表头 G（Rg）串联分压电阻（Rv − Rg），总内阻与紧凑态严格相等
           const nm = find(`${c.id}:__m`)
@@ -185,14 +185,14 @@ export function solve(circuit: Circuit): SolveResult {
       }
       case 'ammeter': {
         // 串联式电流表：低内阻支路，读数 = 支路电流
-        // 学生表接线柱：黑笔在 − 且红笔在量程柱才导通；否则表笔没接好 = 整条支路断开
-        const aRange = meterRangeOf(c)
-        if (aRange === null) {
+        // 学生表接线柱：未接好（null）→ 整条支路断开；接反仍导通（指针反偏由显示层处理）
+        const am = meterRangeOf(c)
+        if (am === null) {
           addRes(c.id, 'ammeter', na, nb, 1e9)
           break
         }
         // 大量程 = 分流电阻更小 → 内阻按量程缩小（0.6A 基准）
-        const aScale = c.posts ? 0.6 / aRange : 1
+        const aScale = c.posts ? 0.6 / am.range : 1
         if (c.expanded && !c.ideal) {
           // 展开态：表头 G（Rg）与分流电阻 Rs 并联，Rs 由 Rg∥Rs = r 反推
           const rg = METER_G_R

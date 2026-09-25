@@ -59,15 +59,21 @@ export type MeterPost = 'neg' | 'low' | 'high'
 export interface MeterPosts { black: MeterPost; red: MeterPost }
 
 /**
- * 学生表接线有效性：黑笔接 − 且红笔接任一量程柱 → 返回当前量程；
- * 否则（红黑都挤在量程柱 / 红笔悬空在 − 之外）= 表笔没接好，返回 null（支路断开、无读数）
+ * 学生表接线判定：
+ * · 黑笔接 − 且红笔接量程柱 → 正常，返回 { range, reversed: false }
+ * · 红黑接反（红笔在 −、黑笔在量程柱）→ 电流反向流过表头，返回 { range, reversed: true }（指针反偏）
+ * · 其他（两笔挤在量程柱 / 悬空）→ 表笔没接好，返回 null（支路断开、无读数）
  * 缺省 posts = 旧存档兼容，视为已接好
  */
-export function meterRangeOf(c: Voltmeter | Ammeter): number | null {
-  if (!c.posts) return c.range
+export function meterRangeOf(c: Voltmeter | Ammeter): { range: number; reversed: boolean } | null {
+  if (!c.posts) return { range: c.range, reversed: false }
   const { black, red } = c.posts
-  if (black === 'neg' && red === 'low') return c.kind === 'voltmeter' ? 3 : 0.6
-  if (black === 'neg' && red === 'high') return c.kind === 'voltmeter' ? 15 : 3
+  const low = c.kind === 'voltmeter' ? 3 : 0.6
+  const high = c.kind === 'voltmeter' ? 15 : 3
+  if (black === 'neg' && red === 'low') return { range: low, reversed: false }
+  if (black === 'neg' && red === 'high') return { range: high, reversed: false }
+  if (black === 'low' && red === 'neg') return { range: low, reversed: true }
+  if (black === 'high' && red === 'neg') return { range: high, reversed: true }
   return null
 }
 
