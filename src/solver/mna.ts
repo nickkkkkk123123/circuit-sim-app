@@ -1,10 +1,11 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
+import { terminalsOf } from './types'
 
 export interface BranchResult {
-  refId: string // 所属元件 id，导线为 wire id
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch'
+  refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -27,10 +28,14 @@ interface Branch {
 }
 
 // 端子即节点（导线不合并节点——导线本身是 0.002Ω 支路，这样每根导线有真实电流可显示）
+// 展开态滑动变阻器额外暴露 :c/:d（金属杆两端），并有内部节点 :__t（杆）与 :__p（滑片触点）
 function buildNodes(circuit: Circuit) {
   const nodeIds: string[] = []
   for (const c of circuit.comps) {
-    nodeIds.push(`${c.id}:a`, `${c.id}:b`)
+    nodeIds.push(...terminalsOf(c).map((t) => `${c.id}:${t}`))
+    if (c.kind === 'rheostat' && c.expanded) {
+      nodeIds.push(`${c.id}:__t`, `${c.id}:__p`)
+    }
   }
   return { nodeIds: [...new Set(nodeIds)] }
 }
@@ -82,6 +87,24 @@ export function solve(circuit: Circuit): SolveResult {
       case 'switch':
         addRes(c.id, c.closed ? 'switch' : 'switch-open', na, nb, c.closed ? 0.01 : 1e9)
         break
+      case 'rheostat': {
+        if (!c.expanded) {
+          // 紧凑态=等效"一上一下"：R = pos × Rmax
+          addRes(c.id, 'rheostat', na, nb, Math.max(c.pos * c.Rmax, 0.01))
+          break
+        }
+        // 展开态内部拓扑：金属杆两端(c/d)→杆节点__t→滑片触点__p→两段电阻丝（pos 段接 a，余段接 b）
+        const nc = find(`${c.id}:c`)
+        const nd = find(`${c.id}:d`)
+        const nt = find(`${c.id}:__t`)
+        const np = find(`${c.id}:__p`)
+        addRes(`${c.id}:rodC`, 'wire', nc, nt, 0.002)
+        addRes(`${c.id}:rodD`, 'wire', nd, nt, 0.002)
+        addRes(`${c.id}:tap`, 'wire', nt, np, 0.01)
+        addRes(`${c.id}:segA`, 'rheostat', np, na, Math.max(c.pos * c.Rmax, 0.01))
+        addRes(`${c.id}:segB`, 'rheostat', np, nb, Math.max((1 - c.pos) * c.Rmax, 0.01))
+        break
+      }
     }
   }
 
@@ -121,7 +144,24 @@ export function solve(circuit: Circuit): SolveResult {
     const current = b.kind === 'battery' ? Math.abs((b.emf! - dv) / b.r) : Math.abs(dv / b.r)
     const power = Math.abs(current * dv)
     results.push({ refId: b.refId, kind: b.kind, dv, current, power })
-    if (b.kind !== 'wire') byComp[b.refId] = results[results.length - 1]
+    // 内部辅助支路（refId 带 :）与导线不入 byComp
+    if (b.kind !== 'wire' && !b.refId.includes(':')) byComp[b.refId] = results[results.length - 1]
+  }
+
+  // 展开态滑动变阻器：多支路汇总——电流取主导支路最大值，功率为各段之和
+  for (const c of comps) {
+    if (c.kind !== 'rheostat' || !c.expanded) continue
+    const parts = results.filter((r) => r.kind === 'rheostat' && r.refId.startsWith(c.id + ':'))
+    const rodCurrent = Math.max(
+      0,
+      ...results
+        .filter((r) => r.kind === 'wire' && r.refId.startsWith(c.id + ':'))
+        .map((r) => r.current),
+    )
+    const power = parts.reduce((s, p) => s + p.power, 0)
+    const current = Math.max(rodCurrent, ...parts.map((p) => p.current))
+    const dv = current > 1e-9 ? power / current : 0
+    byComp[c.id] = { refId: c.id, kind: 'rheostat', dv, current, power }
   }
 
   const openCircuit = comps.some((c) => c.kind === 'switch' && !c.closed)

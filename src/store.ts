@@ -40,6 +40,7 @@ interface EditorState extends Circuit {
   rotate: (id: string) => void
   remove: (id: string) => void
   toggleSwitch: (id: string) => void
+  setExpanded: (id: string, expanded: boolean) => boolean
   updateParam: (id: string, key: string, value: number | boolean) => void
   select: (id: string | null) => void
   selectWire: (id: string | null) => void
@@ -88,6 +89,23 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => ({
       comps: s.comps.map((c) => (c.id === id && c.kind === 'switch' ? { ...c, closed: !c.closed } : c)),
     })),
+
+  setExpanded: (id, expanded) => {
+    // 收起时若有导线挂在金属杆端子 c/d 上，拒绝（导线会悬空）
+    if (!expanded) {
+      const attached = get().wires.some((w) => {
+        const ends = [w.a, w.b]
+        return ends.includes(`${id}:c`) || ends.includes(`${id}:d`)
+      })
+      if (attached) return false
+    }
+    set((s) => ({
+      comps: s.comps.map((c) =>
+        c.id === id && c.kind === 'rheostat' ? ({ ...c, expanded } as Comp) : c,
+      ),
+    }))
+    return true
+  },
 
   updateParam: (id, key, value) =>
     set((s) => ({

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
-import { terminalPos, TERMINAL_OFFSET, type Comp, type CompKind } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, type Comp, type CompKind } from './solver/types'
 import { THEME as T } from './theme'
 
 const W = 1600
@@ -12,6 +12,7 @@ const KIND_NAME: Record<CompKind, string> = {
   resistor: '定值电阻',
   bulb: '小灯泡',
   switch: '开关',
+  rheostat: '滑动变阻器',
 }
 
 function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
@@ -76,12 +77,36 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu }: {
           )}
         </>
       )}
+      {c.kind === 'rheostat' && (c.expanded ? (() => {
+        // 展开态：上=金属杆（c/d 端子），下=电阻丝（a/b 端子），滑片 P 随 pos 移动
+        const bx = -20 + 40 * c.pos
+        return (
+          <>
+            <line x1={-20} y1={0} x2={-32} y2={0} stroke={stroke} strokeWidth={2} />
+            <line x1={20} y1={0} x2={32} y2={0} stroke={stroke} strokeWidth={2} />
+            <rect x={-20} y={-8} width={40} height={16} fill="none" stroke={stroke} strokeWidth={2.5} rx={2} />
+            <line x1={-32} y1={-24} x2={32} y2={-24} stroke={stroke} strokeWidth={3.5} strokeLinecap="round" />
+            <line x1={bx} y1={-24} x2={bx} y2={-8} stroke={stroke} strokeWidth={2} />
+            <polygon points={`${bx},-5 ${bx - 4.5},-13 ${bx + 4.5},-13`} fill={stroke} />
+          </>
+        )
+      })() : (() => {
+        // 紧凑态：等效"一上一下"——电阻符号 + 45° 滑片箭头
+        return (
+          <>
+            <rect x={-20} y={-9} width={40} height={18} fill="none" stroke={stroke} strokeWidth={2.5} rx={2} />
+            <line x1={-26} y1={20} x2={12} y2={-18} stroke={stroke} strokeWidth={2} />
+            <polygon points="17,-21 6,-17 13,-9" fill={stroke} />
+          </>
+        )
+      })())}
     </>
   )
   const label =
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
+    : c.kind === 'rheostat' ? (c.expanded ? `P ${Math.round(c.pos * 100)}% · ${c.Rmax}Ω` : `${(c.pos * c.Rmax).toFixed(1)}Ω`)
     : c.closed ? '闭合' : '断开'
   const readout =
     solved && solved.current > 1e-6
@@ -221,12 +246,16 @@ export default function App() {
   const palette: { kind: CompKind; label: string }[] = [
     { kind: 'battery', label: '电源' },
     { kind: 'resistor', label: '定值电阻' },
+    { kind: 'rheostat', label: '滑动变阻器' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
 
   const selected = s.comps.find((c) => c.id === s.selectedId) ?? null
   const selResult = s.selectedId ? result.byComp[s.selectedId] : undefined
+  // 收起保护：展开态滑动变阻器的 c/d 上是否还挂着导线
+  const collapseBlocked = !!selected && selected.kind === 'rheostat' && selected.expanded &&
+    s.wires.some((w) => [w.a, w.b].includes(`${selected.id}:c`) || [w.a, w.b].includes(`${selected.id}:d`))
 
   return (
     <div className="app">
@@ -362,7 +391,7 @@ export default function App() {
                   else s.select(c.id)
                 }}
               />
-              {(['a', 'b'] as const).map((t) => {
+              {terminalsOf(c).map((t) => {
                 const p = terminalPos(c, t)
                 const term = `${c.id}:${t}`
                 return (
@@ -415,6 +444,30 @@ export default function App() {
                   <input type="range" min={0.5} max={10} step={0.1} value={selected.ratedP}
                     onChange={(e) => s.updateParam(selected.id, 'ratedP', +e.target.value)} />
                 </label>
+              </>
+            )}
+            {selected.kind === 'rheostat' && (
+              <>
+                <label>最大阻值 {selected.Rmax}Ω
+                  <input type="range" min={1} max={50} step={1} value={selected.Rmax}
+                    onChange={(e) => s.updateParam(selected.id, 'Rmax', +e.target.value)} />
+                </label>
+                <label>滑片位置 {Math.round(selected.pos * 100)}%（接入 {(selected.pos * selected.Rmax).toFixed(1)}Ω）
+                  <input type="range" min={0} max={100} step={1} value={Math.round(selected.pos * 100)}
+                    onChange={(e) => s.updateParam(selected.id, 'pos', +e.target.value / 100)} />
+                </label>
+                <button className="wide"
+                  disabled={selected.expanded && collapseBlocked}
+                  onClick={() => s.setExpanded(selected.id, !selected.expanded)}>
+                  {selected.expanded ? '收起为两接线柱' : '展开为四接线柱'}
+                </button>
+                {selected.expanded && (
+                  <p className="warn" style={{ margin: 0 }}>
+                    {collapseBlocked
+                      ? '⚠ 金属杆端子 c/d 上还接着导线，先删除才能收起'
+                      : '四接线柱：a/b=下方电阻丝两端，c/d=上方金属杆。一上一下=变阻，两下=全阻值，两上=导线'}
+                  </p>
+                )}
               </>
             )}
             {selected.kind === 'switch' && (

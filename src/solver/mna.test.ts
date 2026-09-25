@@ -69,4 +69,63 @@ describe('MNA 求解器', () => {
     expect(r.byComp['r1'].current).toBeCloseTo(r.byComp['r2'].current, 3)
     expect(r.byComp['r1'].current * 2).toBeCloseTo(r.byComp['c1'].current, 2)
   })
+
+  // 展开态滑动变阻器：Rmax=10, pos=0.5 → 滑片左侧段 5Ω，右侧段 5Ω
+  function rheoExpanded(wireSpec: { from: string; to: string }[]): Circuit {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5 },
+      { id: 'r1', kind: 'rheostat', x: 0, y: 0, rot: 0, Rmax: 10, pos: 0.5, expanded: true },
+    ]
+    const wires: Wire[] = wireSpec.map((w, i) => ({ id: `w${i}`, a: w.from, b: w.to }))
+    return { comps, wires }
+  }
+
+  it('展开态·一上一下：杆(c)与电阻丝一端(b) → R = (1-pos)×Rmax', () => {
+    const r = solve(rheoExpanded([
+      { from: 'b1:a', to: 'r1:c' },
+      { from: 'r1:b', to: 'b1:b' },
+    ]))
+    // 6 / (0.5 内阻 + 5 段电阻 + ~0.012 杆/触点) ≈ 1.09A
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 5.512, 2)
+  })
+
+  it('展开态·两下：电阻丝两端全接入 → 全阻值 10Ω', () => {
+    const r = solve(rheoExpanded([
+      { from: 'b1:a', to: 'r1:a' },
+      { from: 'r1:b', to: 'b1:b' },
+    ]))
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 10.512, 2)
+  })
+
+  it('展开态·两上：只接金属杆两端 → 近似导线，电流远大于接入电阻丝时', () => {
+    const r = solve(rheoExpanded([
+      { from: 'b1:a', to: 'r1:c' },
+      { from: 'r1:d', to: 'b1:b' },
+    ]))
+    // 回路只剩内阻 0.5 + 杆 ~0.004 → I ≈ 11.9A
+    expect(r.byComp['r1'].current).toBeGreaterThan(10)
+  })
+
+  it('展开态·滑片位置改变阻值：pos=0.2 时一上一下电阻 = 2Ω 段', () => {
+    const c = rheoExpanded([
+      { from: 'b1:a', to: 'r1:c' },
+      { from: 'r1:a', to: 'b1:b' },
+    ])
+    ;(c.comps[1] as { pos: number }).pos = 0.2
+    const r = solve(c)
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 2.512, 2)
+  })
+
+  it('紧凑态：单支路等效 R = pos × Rmax', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5 },
+      { id: 'r1', kind: 'rheostat', x: 0, y: 0, rot: 0, Rmax: 20, pos: 0.5, expanded: false },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['r1'].current).toBeCloseTo(6 / 10.502, 2)
+  })
 })
