@@ -27,12 +27,13 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>) {
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu }: {
+function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu, onSliderPointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
   onPointerDown: (e: React.PointerEvent) => void
   onContextMenu: (e: React.MouseEvent) => void
+  onSliderPointerDown?: (e: React.PointerEvent, c: Comp) => void
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -78,7 +79,7 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu }: {
         </>
       )}
       {c.kind === 'rheostat' && (c.expanded ? (() => {
-        // 展开态：上=金属杆（c/d 端子），下=电阻丝（a/b 端子），滑片 P 随 pos 移动
+        // 展开态：上=金属杆（c/d 端子），下=电阻丝（a/b 端子），滑片 P 随 pos 移动（可拖）
         const bx = -20 + 40 * c.pos
         return (
           <>
@@ -88,15 +89,30 @@ function CompSymbol({ c, selected, solved, onPointerDown, onContextMenu }: {
             <line x1={-32} y1={-24} x2={32} y2={-24} stroke={stroke} strokeWidth={3.5} strokeLinecap="round" />
             <line x1={bx} y1={-24} x2={bx} y2={-8} stroke={stroke} strokeWidth={2} />
             <polygon points={`${bx},-5 ${bx - 4.5},-13 ${bx + 4.5},-13`} fill={stroke} />
+            <text x={bx + 9} y={-14} fill={T.label} fontSize={12}>P</text>
+            <rect
+              x={bx - 10} y={-30} width={20} height={26} fill="transparent"
+              style={{ cursor: c.rot === 90 ? 'ns-resize' : 'ew-resize' }}
+              onPointerDown={(e) => { e.stopPropagation(); onSliderPointerDown?.(e, c) }}
+            />
           </>
         )
       })() : (() => {
-        // 紧凑态：等效"一上一下"——电阻符号 + 45° 滑片箭头
+        // 紧凑态：教材符号——竖直箭头从上方压在电阻上，P 随 pos 移动（可拖）
+        const bx = -20 + 40 * c.pos
         return (
           <>
+            <line x1={-32} y1={0} x2={-20} y2={0} stroke={stroke} strokeWidth={2} />
+            <line x1={20} y1={0} x2={32} y2={0} stroke={stroke} strokeWidth={2} />
             <rect x={-20} y={-9} width={40} height={18} fill="none" stroke={stroke} strokeWidth={2.5} rx={2} />
-            <line x1={-26} y1={20} x2={12} y2={-18} stroke={stroke} strokeWidth={2} />
-            <polygon points="17,-21 6,-17 13,-9" fill={stroke} />
+            <line x1={bx} y1={-32} x2={bx} y2={-13} stroke={stroke} strokeWidth={2} />
+            <polygon points={`${bx},-10 ${bx - 4.5},-18 ${bx + 4.5},-18`} fill={stroke} />
+            <text x={bx + 8} y={-24} fill={T.label} fontSize={12}>P</text>
+            <rect
+              x={bx - 10} y={-38} width={20} height={30} fill="transparent"
+              style={{ cursor: c.rot === 90 ? 'ns-resize' : 'ew-resize' }}
+              onPointerDown={(e) => { e.stopPropagation(); onSliderPointerDown?.(e, c) }}
+            />
           </>
         )
       })())}
@@ -134,6 +150,7 @@ export default function App() {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const toCanvas = useCursorPos(svgRef)
   const [dragging, setDragging] = useState<{ id: string; dx: number; dy: number } | null>(null)
+  const [sliderDrag, setSliderDrag] = useState<{ id: string } | null>(null)
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
@@ -197,6 +214,15 @@ export default function App() {
 
   const onCanvasPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
+    if (sliderDrag) {
+      // 拖滑片：光标位置映射回滑片轴（横放按 x，竖放按 y）
+      const c = s.comps.find((k) => k.id === sliderDrag.id)
+      if (c && c.kind === 'rheostat') {
+        const raw = c.rot === 90 ? (y - c.y + 20) / 40 : (x - c.x + 20) / 40
+        s.updateParam(c.id, 'pos', Math.min(1, Math.max(0, raw)))
+      }
+      return
+    }
     if (dragging) {
       s.moveComp(dragging.id, x - dragging.dx, y - dragging.dy)
       return
@@ -234,8 +260,16 @@ export default function App() {
     s.select(c.id)
   }
 
+  // 滑片拖拽：捕获指针 + 选中该元件，后续 move 在 onCanvasPointerMove 里映射 pos
+  const onSliderPointerDown = (e: React.PointerEvent, c: Comp) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setSliderDrag({ id: c.id })
+    s.select(c.id)
+  }
+
   const release = () => {
     setDragging(null)
+    setSliderDrag(null)
     // 抓取导线端点后松手：落在端子上=改接，落在空白=该导线已被删除（保持待连状态）
     if (grabbedEnd) {
       if (hoverTerm) s.completeWire(hoverTerm)
@@ -384,6 +418,7 @@ export default function App() {
                 selected={s.selectedId === c.id}
                 solved={result.byComp[c.id]}
                 onPointerDown={(e) => onCompBodyPointerDown(e, c)}
+                onSliderPointerDown={onSliderPointerDown}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
