@@ -254,6 +254,30 @@ export default function App() {
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
   const lastTermAction = useRef<{ term: string; ts: number } | null>(null)
   const [dialFor, setDialFor] = useState<string | null>(null) // 表盘读数练习弹窗（元件 id）
+  // 画布视图：滚轮缩放（以光标为中心）+ 空白处拖动平移，按 0 复位
+  const [view, setViewState] = useState({ scale: 1, tx: 0, ty: 0 })
+  const viewRef = useRef(view)
+  const applyView = (v: { scale: number; tx: number; ty: number }) => {
+    viewRef.current = v
+    setViewState(v)
+  }
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const st = viewRef.current
+      const ctm = el.getScreenCTM()
+      if (!ctm) return
+      const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse())
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
+      const scale = Math.min(3, Math.max(0.4, st.scale * factor))
+      const k = scale / st.scale
+      applyView({ scale, tx: p.x - (p.x - st.tx) * k, ty: p.y - (p.y - st.ty) * k })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
 
@@ -269,6 +293,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') s.cancelWire()
+      if (e.key === '0') applyView({ scale: 1, tx: 0, ty: 0 })
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (s.selectedWire) s.removeWire(s.selectedWire)
         else if (s.selectedId) s.remove(s.selectedId)
@@ -279,6 +304,8 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [s])
+
+  const [pan, setPan] = useState<{ sx: number; sy: number; tx0: number; ty0: number; active: boolean } | null>(null)
 
   const onCanvasPointerDown = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
@@ -292,6 +319,8 @@ export default function App() {
     }
     s.select(null)
     s.selectWire(null)
+    // 空白处按下：进入平移待定（拖动超 6px 才算平移，原地点击=取消选中）
+    setPan({ sx: x, sy: y, tx0: viewRef.current.tx, ty0: viewRef.current.ty, active: false })
   }
 
   // 右键：连线中=取消；已选中的导线/元件=删除；空=取消选中
@@ -315,6 +344,14 @@ export default function App() {
 
   const onCanvasPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
+    if (pan) {
+      // 平移画布：原地点击（位移 <6px）仍保持"取消选中"的原语义
+      if (pan.active || Math.hypot(x - pan.sx, y - pan.sy) > 6) {
+        if (!pan.active) setPan({ ...pan, active: true })
+        applyView({ scale: viewRef.current.scale, tx: pan.tx0 + (x - pan.sx), ty: pan.ty0 + (y - pan.sy) })
+      }
+      return
+    }
     if (sliderDrag) {
       // 拖滑片：光标位置映射回滑片轴（横放按 x，竖放按 y）
       const c = s.comps.find((k) => k.id === sliderDrag.id)
@@ -402,6 +439,11 @@ export default function App() {
   const release = (e?: React.PointerEvent) => {
     setDragging(null)
     setSliderDrag(null)
+    // 平移结束：未拖动=维持原"取消选中"语义
+    if (pan) {
+      setPan(null)
+      return
+    }
     // 开关：没拖远 = 翻转通断
     if (switchPress) {
       if (!switchPress.moved) s.toggleSwitch(switchPress.id)
@@ -485,7 +527,8 @@ export default function App() {
               <circle cx={1} cy={1} r={1} fill="var(--grid-dot)" />
             </pattern>
           </defs>
-          <rect width={W} height={H} fill="url(#grid)" />
+          <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
+          <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#grid)" />
 
           {s.wires.map((w) => {
             const [ca, ta] = [w.a.split(':')[0], w.a.split(':')[1] as 'a' | 'b']
@@ -605,6 +648,7 @@ export default function App() {
               })}
             </g>
           ))}
+          </g>
         </svg>
       </main>
 
