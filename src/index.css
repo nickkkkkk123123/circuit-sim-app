@@ -219,3 +219,27 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .exp-card:active { transform: scale(0.98); }
 .exp-card strong { font-size: 13px; color: var(--accent-soft); }
 .exp-card span { font-size: 12px; line-height: 1.55; color: var(--muted); }
+
+/* 侧栏按钮行（清空/撤销） */
+.pal-row { display: flex; gap: 8px; }
+.pal-row button { flex: 1; font-size: 12px; padding: 8px 10px; }
+.pal-row button:disabled { opacity: 0.45; cursor: default; }
+.pal-row button .dot { display: none; }
+
+/* 实验详情浮窗：默认停在右侧栏旁，标题栏可拖动 */
+.exp-panel {
+  position: fixed; right: 260px; top: 72px; z-index: 40;
+  width: 300px; max-height: 70vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border-hot); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  display: flex; flex-direction: column;
+}
+.exp-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; cursor: grab; touch-action: none;
+  border-bottom: 1px solid var(--panel-line); user-select: none;
+}
+.exp-panel-head:active { cursor: grabbing; }
+.exp-panel-head strong { font-size: 13px; color: var(--accent-soft); }
+.exp-panel-body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.exp-panel-body p { font-size: 12px; line-height: 1.7; color: var(--ink); }

@@ -347,12 +347,15 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         {c.rot === 0 && body}
         {c.rot === 90 && <g transform="rotate(90)">{body}</g>}
       </g>
-      <text x={0} y={c.kind === 'bulb' ? 34 : 30} fill={T.label} fontSize={11} textAnchor="middle">{label}</text>
-      {readout && (
-        <text x={0} y={c.kind === 'bulb' ? 48 : 44} fill={selected ? T.accentSoft : T.readout} fontSize={11} textAnchor="middle">
-          {readout}
-        </text>
-      )}
+      {/* 标签反向旋转：元件竖置时读数仍保持水平可读 */}
+      <g transform={c.rot === 90 ? 'rotate(-90)' : undefined}>
+        <text x={0} y={c.kind === 'bulb' ? 34 : 30} fill={T.label} fontSize={11} textAnchor="middle">{label}</text>
+        {readout && (
+          <text x={0} y={c.kind === 'bulb' ? 48 : 44} fill={selected ? T.accentSoft : T.readout} fontSize={11} textAnchor="middle">
+            {readout}
+          </text>
+        )}
+      </g>
     </g>
   )
 }
@@ -432,6 +435,12 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
 
 export default function App() {
   const s = useEditor()
+  const canUndo = s.histCount > 0
+  const undoCount = s.histCount
+  // 实验详情窗：选择实验后弹出，可拖动
+  const [expInfo, setExpInfo] = useState<{ name: string; detail: string } | null>(null)
+  const [expPos, setExpPos] = useState<{ x: number; y: number } | null>(null)
+  const expDragRef = useRef<{ ox: number; oy: number } | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
   const gRef = useRef<SVGGElement | null>(null)
   const toCanvas = useCursorPos(svgRef, gRef)
@@ -510,6 +519,11 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') s.cancelWire()
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault()
+        s.undo()
+        return
+      }
       if (e.key === '0') applyView({ scale: 1, tx: 0, ty: 0 }, true)
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (s.selectedWire) s.removeWire(s.selectedWire)
@@ -639,6 +653,7 @@ export default function App() {
     const { x, y } = toCanvas(e)
     // 捕获指针：拖拽中鼠标甩出画布/快速移动也不丢事件
     e.currentTarget.setPointerCapture(e.pointerId)
+    s.beginHistory() // 拖拽快照：整个手势算一步撤销
     setDragging({ id: c.id, dx: x - c.x, dy: y - c.y })
     s.select(c.id)
   }
@@ -646,6 +661,7 @@ export default function App() {
   // 滑片拖拽：捕获指针 + 选中该元件，后续 move 在 onCanvasPointerMove 里映射 pos
   const onSliderPointerDown = (e: React.PointerEvent, c: Comp) => {
     e.currentTarget.setPointerCapture(e.pointerId)
+    s.beginHistory() // 滑片连续调整也只算一步
     setSliderDrag({ id: c.id })
     s.select(c.id)
   }
@@ -655,6 +671,7 @@ export default function App() {
     if (s.pendingFrom || s.tool !== 'select') return
     const { x, y } = toCanvas(e)
     e.currentTarget.setPointerCapture(e.pointerId)
+    s.beginHistory()
     setSwitchPress({ id: c.id, x0: x, y0: y, dx: x - c.x, dy: y - c.y, moved: false })
     s.select(c.id)
   }
@@ -755,6 +772,14 @@ export default function App() {
         ))}
         <div className="divider" />
         <button onClick={() => s.setDemoOpen(true)}><span className="dot" style={{ background: '#5e6ad2' }} />演示电路</button>
+        <div className="pal-row">
+          <button onClick={() => { if (confirm('清空画布上的全部元件和导线？')) s.clearAll() }}>
+            <span className="dot" style={{ background: '#e08a97' }} />清空画布
+          </button>
+          <button onClick={() => s.undo()} disabled={!canUndo}>
+            <span className="dot" style={{ background: '#9aa3b8' }} />撤销 {canUndo ? `(${undoCount})` : ''}
+          </button>
+        </div>
         <p className="tips">
           按住端子拖到另一端松手即连线<br />
           （或点两个端子）· Esc 取消连线<br />
@@ -1241,7 +1266,7 @@ export default function App() {
                   <h3>{group}</h3>
                   <div className="exp-cards">
                     {items.map((e) => (
-                      <button key={e.id} className="exp-card" onClick={() => s.loadExperiment(e.id)}>
+                      <button key={e.id} className="exp-card" onClick={() => { s.loadExperiment(e.id); setExpInfo({ name: e.name, detail: e.detail }); setExpPos(null) }}>
                         <strong>{e.name}</strong>
                         <span>{e.desc}</span>
                       </button>
@@ -1250,6 +1275,37 @@ export default function App() {
                 </section>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* 实验详情窗：载入实验后出现，标题栏可拖动，浮在右侧栏旁边 */}
+      {expInfo && (
+        <div
+          className="exp-panel"
+          style={expPos ? { left: expPos.x, top: expPos.y } : undefined}
+        >
+          <div
+            className="exp-panel-head"
+            onPointerDown={(e) => {
+              const el = e.currentTarget.parentElement as HTMLElement
+              const r = el.getBoundingClientRect()
+              expDragRef.current = { ox: e.clientX - r.left, oy: e.clientY - r.top }
+              e.currentTarget.setPointerCapture(e.pointerId)
+            }}
+            onPointerMove={(e) => {
+              if (!expDragRef.current) return
+              const x = e.clientX - expDragRef.current.ox
+              const y = e.clientY - expDragRef.current.oy
+              setExpPos({ x: Math.max(0, Math.min(x, window.innerWidth - 200)), y: Math.max(0, Math.min(y, window.innerHeight - 60)) })
+            }}
+            onPointerUp={() => { expDragRef.current = null }}
+          >
+            <strong>{expInfo.name}</strong>
+            <button className="icon-btn" title="关闭" onClick={() => setExpInfo(null)}>×</button>
+          </div>
+          <div className="exp-panel-body">
+            {expInfo.detail.split('\n').map((line, i) => <p key={i}>{line}</p>)}
           </div>
         </div>
       )}
