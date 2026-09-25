@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'spdt'
 
 export interface BaseComp {
   id: string
@@ -63,18 +63,24 @@ export interface Ohmmeter extends BaseComp {
   // 欧姆表：读数 = 零源辅助解中两端间等效电阻；主解中呈高阻开路
 }
 
+export interface Spdt extends BaseComp {
+  kind: 'spdt'
+  pos: 1 | 2 // 单刀双掷：公共端 a 接通触点 1（b）或 2（p）
+}
+
 // 灵敏电流计表头（G）：内阻固定 100Ω，量程 ±1mA（双向偏转），也是电表改装的核心部件
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Spdt
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
 /** 元件当前对外暴露的接线柱（滑动变阻器：紧凑态 a/b/p 三端子，展开态 a/b/c/d 四端子，其余两端子） */
 export function terminalsOf(c: Comp): TerminalId[] {
-  if (c.kind !== 'rheostat') return ['a', 'b']
-  return c.expanded ? ['a', 'b', 'c', 'd'] : ['a', 'b', 'p']
+  if (c.kind === 'rheostat') return c.expanded ? ['a', 'b', 'c', 'd'] : ['a', 'b', 'p']
+  if (c.kind === 'spdt') return ['a', 'b', 'p']
+  return ['a', 'b']
 }
 
 export interface Wire {
@@ -99,6 +105,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   ammeter: 24,
   galvanometer: 24,
   ohmmeter: 24,
+  spdt: 28,
 }
 
 // 展开态滑动变阻器：金属杆距中心的高度
@@ -126,6 +133,17 @@ export function terminalPos(c: Comp, t: TerminalId): { x: number; y: number } {
       if (c.rot === 90) return { x: c.x + 32, y: c.y + bx }
       return { x: c.x + bx, y: c.y - 32 }
     }
+  }
+  if (c.kind === 'spdt') {
+    // 单刀双掷：a=公共端（下），b=触点1（左上），p=触点2（右上）
+    const local: Partial<Record<TerminalId, [number, number]>> = {
+      a: [0, 28],
+      b: [-28, -20],
+      p: [28, -20],
+    }
+    const [lx, ly] = local[t] ?? local.a!
+    if (c.rot === 90) return { x: c.x - ly, y: c.y + lx }
+    return { x: c.x + lx, y: c.y + ly }
   }
   const d = TERMINAL_OFFSET[c.kind]
   // 展开态电表：端子随虚线框外移
@@ -155,5 +173,7 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0 }
     case 'ohmmeter':
       return { id, kind, x, y, rot: 0 }
+    case 'spdt':
+      return { id, kind, x, y, rot: 0, pos: 1 }
   }
 }

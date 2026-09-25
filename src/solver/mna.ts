@@ -175,6 +175,14 @@ export function solve(circuit: Circuit): SolveResult {
         // 欧姆表在主解中=高阻开路（不干扰电路）；读数走零源辅助求解
         addRes(c.id, 'ohmmeter', na, nb, 1e9)
         break
+      case 'spdt': {
+        // 单刀双掷：公共端 a 与触点 b/p 之间一通一断
+        const nb1 = find(`${c.id}:b`)
+        const np2 = find(`${c.id}:p`)
+        addRes(`${c.id}:t1`, c.pos === 1 ? 'switch' : 'switch-open', na, nb1, c.pos === 1 ? 0.01 : 1e9)
+        addRes(`${c.id}:t2`, c.pos === 2 ? 'switch' : 'switch-open', na, np2, c.pos === 2 ? 0.01 : 1e9)
+        break
+      }
     }
   }
 
@@ -229,6 +237,14 @@ export function solve(circuit: Circuit): SolveResult {
       : parts.reduce((s, p) => s + p.current, 0) // 并联结构：表头 + 分流之和
     const power = parts.reduce((s, p) => s + p.power, 0)
     byComp[c.id] = { refId: c.id, kind: c.kind, dv: va - vb, current, power }
+  }
+
+  // 单刀双掷：byComp = 当前接通的那条支路
+  for (const c of comps) {
+    if (c.kind !== 'spdt') continue
+    const parts = results.filter((r) => r.refId.startsWith(c.id + ':'))
+    const act = parts.find((p) => p.current > 1e-6) ?? parts[0]
+    if (act) byComp[c.id] = { refId: c.id, kind: act.kind, dv: act.dv, current: act.current, power: act.power }
   }
 
   const openCircuit = comps.some((c) => c.kind === 'switch' && !c.closed)

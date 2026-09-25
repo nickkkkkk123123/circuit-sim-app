@@ -318,4 +318,34 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires: [] })
     expect(r.ohm!['o1']).toBeGreaterThan(1e6)
   })
+
+  it('单刀双掷 pos=1：公共端只与触点 1 接通', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 's1', kind: 'spdt', x: 0, y: 0, rot: 0, pos: 1 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 's1:a' },
+      { id: 'w2', a: 's1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['s1'].current).toBeCloseTo(6 / 10.511, 2)
+  })
+
+  it('单刀双掷 pos=2：原回路断开（触点 1 悬空）', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5, expanded: false },
+      { id: 's1', kind: 'spdt', x: 0, y: 0, rot: 0, pos: 2 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'b1:a', b: 's1:a' },
+      { id: 'w2', a: 's1:b', b: 'r1:a' },
+      { id: 'w3', a: 'r1:b', b: 'b1:b' },
+    ]
+    const r = solve({ comps, wires })
+    expect(r.byComp['s1'].current).toBeCloseTo(0, 6)
+  })
 })

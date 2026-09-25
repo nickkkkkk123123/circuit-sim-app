@@ -24,6 +24,7 @@ const KIND_NAME: Record<CompKind, string> = {
   ammeter: '电流表',
   galvanometer: '灵敏电流计',
   ohmmeter: '欧姆表',
+  spdt: '单刀双掷开关',
   bulb: '小灯泡',
   switch: '开关',
 }
@@ -123,6 +124,23 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
             </text>
             <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
             <text x={0} y={8} textAnchor="middle" fontSize={20} fontWeight={700} fill={stroke}>Ω</text>
+          </>
+        )
+      })()}
+      {c.kind === 'spdt' && (() => {
+        // 单刀双掷：公共端 a（下），杠杆掷向触点 1（左）或 2（右）
+        const lx = c.pos === 1 ? -18 : 18
+        return (
+          <>
+            <line x1={0} y1={28} x2={0} y2={8} stroke={stroke} strokeWidth={2} />
+            <line x1={0} y1={8} x2={lx} y2={-14} stroke={stroke} strokeWidth={2.5} strokeLinecap="round" />
+            <circle cx={0} cy={8} r={3} fill={stroke} />
+            <text x={-28} y={-28} fontSize={9} fill={T.label}>1</text>
+            <text x={28} y={-28} fontSize={9} fill={T.label}>2</text>
+            <rect
+              x={-34} y={-26} width={68} height={62} fill="transparent"
+              onPointerDown={(e) => { e.stopPropagation(); onSwitchPointerDown?.(e, c) }}
+            />
           </>
         )
       })()}
@@ -267,6 +285,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     : isMeter ? `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`
     : isOhm ? '断电测电阻'
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
+    : c.kind === 'spdt' ? `公共端接 ${c.pos === 1 ? '触点1' : '触点2'}`
     : c.kind === 'rheostat' ? (c.expanded
         ? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`
         : rheoLabel ?? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`)
@@ -514,9 +533,13 @@ export default function App() {
       setPan(null)
       return
     }
-    // 开关：没拖远 = 翻转通断
+    // 开关/单刀双掷：没拖远 = 切换（开关翻转通断，SPDT 掷向另一触点）
     if (switchPress) {
-      if (!switchPress.moved) s.toggleSwitch(switchPress.id)
+      if (!switchPress.moved) {
+        const c = editorState().comps.find((k) => k.id === switchPress.id)
+        if (c?.kind === 'switch') s.toggleSwitch(c.id)
+        if (c?.kind === 'spdt') s.updateParam(c.id, 'pos', c.pos === 1 ? 2 : 1)
+      }
       setSwitchPress(null)
       return
     }
@@ -548,6 +571,7 @@ export default function App() {
     { kind: 'ammeter', label: '电流表' },
     { kind: 'galvanometer', label: '灵敏电流计' },
     { kind: 'ohmmeter', label: '欧姆表' },
+    { kind: 'spdt', label: '单刀双掷' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -873,6 +897,19 @@ export default function App() {
                       : `电流 ${mA.toFixed(2)}mA，指针${iSigned > 0 ? '右' : '左'}偏`}
                   </p>
                   <button className="wide" onClick={() => s.rotate(selected.id)}>对调接线柱（± 反向）</button>
+                </>
+              )
+            })()}
+            {selected.kind === 'spdt' && (() => {
+              const other = selected.pos === 1 ? 2 : 1
+              return (
+                <>
+                  <button className="wide" onClick={() => s.updateParam(selected.id, 'pos', other)}>
+                    掷向触点 {other}（当前 {selected.pos}）
+                  </button>
+                  <p className="warn" style={{ margin: 0 }}>
+                    公共端 a 与触点 {selected.pos} 接通，触点 {other} 断开。单击开关本体也可切换。
+                  </p>
                 </>
               )
             })()}
