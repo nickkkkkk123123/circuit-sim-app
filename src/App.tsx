@@ -439,17 +439,25 @@ export default function App() {
               {terminalsOf(c).map((t) => {
                 const p = terminalPos(c, t)
                 const term = `${c.id}:${t}`
+                const active = hoverTerm === term || s.pendingFrom === term
                 return (
-                  <circle
-                    key={t}
-                    className="terminal"
-                    cx={p.x} cy={p.y}
-                    r={hoverTerm === term || s.pendingFrom === term ? 7 : 5}
-                    fill={hoverTerm === term || s.pendingFrom === term ? T.terminal.hot : T.terminal.idle}
-                    stroke={T.terminal.rim} strokeWidth={2}
-                    style={{ cursor: 'crosshair' }}
-                    onPointerDown={(e) => onTerminalClick(e, term)}
-                  />
+                  <g key={t}>
+                    {/* 可见端子：渲染层不做事件靶（事件走下方放大热区） */}
+                    <circle
+                      className="terminal"
+                      cx={p.x} cy={p.y}
+                      r={active ? 7 : 5}
+                      fill={active ? T.terminal.hot : T.terminal.idle}
+                      stroke={T.terminal.rim} strokeWidth={2}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                    {/* 放大的透明热区：r=14，肉眼不可见但好点 */}
+                    <circle
+                      cx={p.x} cy={p.y} r={14} fill="transparent"
+                      style={{ cursor: 'crosshair' }}
+                      onPointerDown={(e) => onTerminalClick(e, term)}
+                    />
+                  </g>
                 )
               })}
             </g>
