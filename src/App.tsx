@@ -356,6 +356,22 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   )
 }
 
+/** 界面小图标：内联 SVG 代替文字符号——emoji 走系统彩色字体回退，字形大小/基线各机不同会撑破按钮 */
+function UiIcon({ name }: { name: 'sun' | 'moon' | 'collapse' | 'expand' }) {
+  const st = { stroke: 'currentColor', strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" aria-hidden>
+      {name === 'sun' && (<>
+        <circle cx={12} cy={12} r={4.5} {...st} />
+        <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1" {...st} />
+      </>)}
+      {name === 'moon' && <path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a7 7 0 0 0 9.7 9.7z" {...st} />}
+      {name === 'collapse' && <path d="M5 4v16M20 12H8M12 7l-5 5 5 5" {...st} />}
+      {name === 'expand' && <path d="M19 4v16M4 12h12M12 7l5 5-5 5" {...st} />}
+    </svg>
+  )
+}
+
 /** 元件库缩略图：按元件类型画迷你符号（跟随主题变量） */
 function MiniSymbol({ kind }: { kind: CompKind }) {
   const st = { stroke: 'var(--ink)', strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const }
@@ -712,18 +728,18 @@ export default function App() {
       {!sbCollapsed && <div className="grip" onPointerDown={gripDown} />}
       {sbCollapsed && (
         <div className="sb-reopen">
-          <button className="icon-btn" onClick={() => setSbCollapsed(false)} title="展开侧栏">⇥</button>
-          <button className="icon-btn" onClick={toggleTheme} title="切换主题">{theme === 'dark' ? '☀' : '🌙'}</button>
+          <button className="icon-btn" onClick={() => setSbCollapsed(false)} title="展开侧栏"><UiIcon name="expand" /></button>
+          <button className="icon-btn" onClick={toggleTheme} title="切换主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
         </div>
       )}
       <aside
         className={`palette${sbResizing ? ' resizing' : ''}`}
-        style={{ width: sbCollapsed ? 0 : sbWidth, borderWidth: sbCollapsed ? 0 : undefined }}
+        style={{ width: sbCollapsed ? 0 : sbWidth, borderWidth: sbCollapsed ? 0 : undefined, padding: sbCollapsed ? 0 : undefined }}
       >
         <div className="pal-head">
           <h1>电路实验台</h1>
-          <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? '☀' : '🌙'}</button>
-          <button className="icon-btn" onClick={() => setSbCollapsed(true)} title="收起侧栏">⇤</button>
+          <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
+          <button className="icon-btn" onClick={() => setSbCollapsed(true)} title="收起侧栏"><UiIcon name="collapse" /></button>
         </div>
         <p className="hint">点击元件后在画布点击放置</p>
         {palette.map((p) => (

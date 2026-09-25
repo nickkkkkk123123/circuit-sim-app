@@ -89,12 +89,15 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   padding-bottom: 10px; border-bottom: 1px solid var(--panel-line);
 }
 .pal-head h1 { flex: 1; border-bottom: none; padding-bottom: 0; }
-.icon-btn {
+/* 特异性要压过 .palette button（0,1,1），否则 padding/字体又被元件库按钮规则抢走 */
+.app .icon-btn {
   width: 26px; height: 26px; border-radius: 6px; flex: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0;
   background: var(--panel-raise); border: 1px solid var(--border); color: var(--muted);
-  font-size: 13px; line-height: 1; transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.icon-btn:hover { background: var(--panel-hover); border-color: var(--border-hot); color: var(--ink); }
+.app .icon-btn svg { display: block; }
+.app .icon-btn:hover { background: var(--panel-hover); border-color: var(--border-hot); color: var(--ink); }
 .grip {
   width: 6px; cursor: col-resize; flex: none;
   background: transparent; border-left: 1px solid transparent;
