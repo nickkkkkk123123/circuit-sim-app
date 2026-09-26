@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ballCollisions, kineticEnergy, makeBall, stepSandbox, wallCollisions, type Ball, type SandboxParams } from './kinematics-sandbox'
+import { ballCollisions, kineticEnergy, makeBall, stepSandbox, wallCollisions, type Ball, type SandboxParams, type StaticShape } from './kinematics-sandbox'
 
 const P = (over?: Partial<SandboxParams>): SandboxParams => ({ g: 9.8, e: 1, W: 40, H: 20, ...over })
 const B = (id: number, x: number, y: number, vx = 0, vy = 0, r = 0.5): Ball => makeBall(id, x, y, r, vx, vy)
@@ -35,7 +35,7 @@ describe('运动学沙盒（物理引擎）', () => {
 
   it('自由落体 1s：vy = g，y = ½g（半隐式欧拉足够近似）', () => {
     const balls = [B(1, 5, 1, 0, 0)]
-    stepSandbox(balls, P({ g: 10 }), 1, 100)
+    stepSandbox(balls, [], P({ g: 10 }), 1, 100)
     expect(balls[0].vy).toBeCloseTo(10, 1)
     expect(balls[0].y).toBeCloseTo(1 + 5, 0) // 1 + ½·10·1²
   })
@@ -59,9 +59,36 @@ describe('运动学沙盒（物理引擎）', () => {
     const H = p.H, r = balls[0].r, m = balls[0].m
     const energy = (b: Ball) => kineticEnergy([b]) + m * p.g * (H - r - b.y) // 势能以地面为基准
     const E0 = energy(balls[0])
-    stepSandbox(balls, p, 2, 240)
+    stepSandbox(balls, [], p, 2, 240)
     expect(balls[0].vx).toBeLessThan(0)
     expect(energy(balls[0])).toBeGreaterThan(E0 * 0.9) // e=1 离散损耗 <10%
     expect(energy(balls[0])).toBeLessThan(E0 * 1.1)
+  })
+
+  it('静态体：斜面上的球从静止下滑，获得水平分速度且不穿透斜面', () => {
+    // 斜面：中心 (20, 12)，长 10m，角度 -30°（左低右高），球放在左半坡向左下滑
+    const statics: StaticShape[] = [{ id: 1, kind: 'seg', cx: 20, cy: 12, len: 10, angleDeg: -30 }]
+    const balls = [B(1, 16.5, 11.6, 0, 0, 0.5)]
+    stepSandbox(balls, statics, P({ g: 10 }), 1.5, 120)
+    expect(balls[0].vx).toBeLessThan(-1)
+    expect(balls[0].y).toBeGreaterThan(11.6)
+  })
+
+  it('静态体：圆弧把球导向弧面滑动，不被穿透', () => {
+    // 四分之一圆弧：圆心 (20, 8)，半径 6，起始角 180°（覆盖左侧下半弧）
+    const statics: StaticShape[] = [{ id: 1, kind: 'arc', cx: 20, cy: 8, r: 6, angleDeg: Math.PI }]
+    const balls = [B(1, 14.2, 9, 3, 0, 0.4)]
+    stepSandbox(balls, statics, P({ g: 10, e: 0.6 }), 2, 240)
+    // 球最终应停在弧面之上（圆心下方半径附近）或被弹开，总之不在弧"内部实体"里
+    const inSolid = Math.hypot(balls[0].x - 20, balls[0].y - 8) < 6 - 0.4 - 0.05
+    expect(inSolid).toBe(false)
+  })
+
+  it('静态体不动：碰撞前后斜面几何不发生任何变化', () => {
+    const statics: StaticShape[] = [{ id: 1, kind: 'seg', cx: 20, cy: 12, len: 10, angleDeg: -30 }]
+    const before = JSON.stringify(statics)
+    const balls = [B(1, 18, 11.5, 0, 0, 0.5)]
+    stepSandbox(balls, statics, P(), 1, 60)
+    expect(JSON.stringify(statics)).toBe(before)
   })
 })

@@ -73,11 +73,12 @@ export function ballCollisions(balls: Ball[], p: SandboxParams): void {
 }
 
 /** 引擎单步：细分 subSteps 次防高速穿透 */
-export function stepSandbox(balls: Ball[], p: SandboxParams, dt: number, subSteps = 4): void {
+export function stepSandbox(balls: Ball[], statics: StaticShape[], p: SandboxParams, dt: number, subSteps = 4): void {
   const h = dt / subSteps
   for (let i = 0; i < subSteps; i++) {
     integrate(balls, p, h)
     ballCollisions(balls, p)
+    staticCollisions(balls, statics, p.e)
     wallCollisions(balls, p)
   }
 }
@@ -85,4 +86,81 @@ export function stepSandbox(balls: Ball[], p: SandboxParams, dt: number, subStep
 /** 动能总和（J）——用于验证弹性碰撞能量守恒，也供 UI 显示 */
 export function kineticEnergy(balls: Ball[]): number {
   return balls.reduce((s, b) => s + 0.5 * b.m * (b.vx * b.vx + b.vy * b.vy), 0)
+}
+
+// ── 静态几何体（不动的碰撞体）：斜面=线段，四分之一圆弧=折线采样 ──
+// 线段碰撞是双侧的（球从哪边撞都弹），圆弧用 16 段折线逼近，精度对演示足够
+
+export interface StaticSeg {
+  id: number
+  kind: 'seg'
+  cx: number
+  cy: number // 中心点 m
+  len: number // 长度 m
+  angleDeg: number // 朝向（0=水平，正=顺时针，屏幕 y 向下）
+}
+
+export interface StaticArc {
+  id: number
+  kind: 'arc'
+  cx: number
+  cy: number // 圆心 m
+  r: number // 半径 m
+  angleDeg: number // 起始角
+}
+
+export type StaticShape = StaticSeg | StaticArc
+
+/** 线段端点坐标 */
+export function segEndpoints(s: StaticSeg): { ax: number; ay: number; bx: number; by: number } {
+  const rad = (s.angleDeg * Math.PI) / 180
+  const dx = (Math.cos(rad) * s.len) / 2
+  const dy = (Math.sin(rad) * s.len) / 2
+  return { ax: s.cx - dx, ay: s.cy - dy, bx: s.cx + dx, by: s.cy + dy }
+}
+
+/** 圆弧折线采样（16 段，跨 90°） */
+export function arcPoints(s: StaticArc, n = 16): { x: number; y: number }[] {
+  const a0 = (s.angleDeg * Math.PI) / 180
+  const pts: { x: number; y: number }[] = []
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + ((Math.PI / 2) * i) / n
+    pts.push({ x: s.cx + s.r * Math.cos(a), y: s.cy + s.r * Math.sin(a) })
+  }
+  return pts
+}
+
+/** 圆 vs 线段：最近点法。碰撞时沿法线推出并按恢复系数反射速度（双侧） */
+export function circleVsSegment(b: Ball, ax: number, ay: number, bx: number, by: number, e: number): void {
+  const abx = bx - ax, aby = by - ay
+  const len2 = abx * abx + aby * aby
+  let t = len2 > 0 ? ((b.x - ax) * abx + (b.y - ay) * aby) / len2 : 0
+  t = Math.max(0, Math.min(1, t))
+  const cx = ax + t * abx, cy = ay + t * aby
+  const dx = b.x - cx, dy = b.y - cy
+  const d = Math.hypot(dx, dy)
+  if (d >= b.r || d === 0) return
+  const nx = dx / d, ny = dy / d
+  b.x += nx * (b.r - d)
+  b.y += ny * (b.r - d)
+  const vn = b.vx * nx + b.vy * ny
+  if (vn < 0) {
+    b.vx -= (1 + e) * vn * nx
+    b.vy -= (1 + e) * vn * ny
+  }
+}
+
+/** 静态体碰撞入口：按类型生成线段并逐条检测 */
+export function staticCollisions(balls: Ball[], statics: StaticShape[], e: number): void {
+  for (const s of statics) {
+    if (s.kind === 'seg') {
+      const ep = segEndpoints(s)
+      for (const b of balls) circleVsSegment(b, ep.ax, ep.ay, ep.bx, ep.by, e)
+    } else {
+      const pts = arcPoints(s)
+      for (let i = 0; i < pts.length - 1; i++) {
+        for (const b of balls) circleVsSegment(b, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, e)
+      }
+    }
+  }
 }
