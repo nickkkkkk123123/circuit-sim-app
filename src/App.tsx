@@ -254,8 +254,8 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
       {isCap && (() => (
         // 电容：两平行板符号，上方实时电压
         <>
-          <text x={0} y={-28} textAnchor="middle" fontSize={12} fontWeight={600} fill={Math.abs(solved?.dv ?? 0) > 0.01 ? T.readout : T.label}>
-            {(solved?.dv ?? 0).toFixed(2)}V
+          <text x={0} y={-28} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={Math.abs(solved?.dv ?? 0) > 0.01 ? T.readout : T.label}>
+            {(solved?.dv ?? 0).toFixed(2)}V · Q={(c.c * (solved?.dv ?? 0) * 1e6).toFixed(0)}µC
           </text>
           <line x1={-24} y1={0} x2={-9} y2={0} stroke={stroke} strokeWidth={2} />
           <line x1={-9} y1={-9} x2={-9} y2={9} stroke={stroke} strokeWidth={3.5} />
