@@ -1237,6 +1237,26 @@ export default function App() {
                     style={{ animationDirection: (wr.dv ?? 0) >= 0 ? 'normal' : 'reverse' }}
                   />
                 )}
+                {/* 电流方向箭头：沿导线从高电位流向低电位，持续运动——微弱电流下也能看出电流存在 */}
+                {wr && wr.current > 2e-5 && (() => {
+                  const rev = (wr.dv ?? 0) < 0
+                  const A = rev ? p2 : p1
+                  const B = rev ? p1 : p2
+                  const len = Math.hypot(B.x - A.x, B.y - A.y) || 1
+                  const n = Math.min(5, Math.max(1, Math.round(len / 70)))
+                  const dur = Math.max(0.9, len / 90)
+                  return Array.from({ length: n }).map((_, i) => (
+                    <polygon key={'ar' + i} points="-4,-4.5 6,0 -4,4.5" fill={T.wire.live} opacity={0.9}>
+                      <animateMotion
+                        dur={`${dur.toFixed(2)}s`}
+                        begin={`${(-(i / n) * dur).toFixed(2)}s`}
+                        repeatCount="indefinite"
+                        rotate="auto"
+                        path={`M ${A.x} ${A.y} L ${B.x} ${B.y}`}
+                      />
+                    </polygon>
+                  ))
+                })()}
                 {/* 命中区：悬停显抓点，右键直接删除 */}
                 <line
                   x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
