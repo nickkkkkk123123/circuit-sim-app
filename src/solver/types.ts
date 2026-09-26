@@ -167,9 +167,22 @@ export interface Relay extends BaseComp {
 }
 
 // 逻辑门：VCC(c)/GND(d) 必须接电源，输入 a(/b)，输出 p。C=εS/d 同款教学宏——门内部=开关+电源
+// NAND/NOR=AND/OR 取反（万能门），XOR=异或（加法器地基）；NOT 只用输入 a
 export interface Gate extends BaseComp {
   kind: 'gate'
-  type: 'AND' | 'OR' | 'NOT'
+  type: 'AND' | 'OR' | 'NOT' | 'NAND' | 'NOR' | 'XOR'
+}
+
+// 门真值：输入是否高电平 → 输出状态（mna 状态迭代与测试共用）
+export function gateTruth(type: Gate['type'], a: boolean, b: boolean): boolean {
+  switch (type) {
+    case 'AND': return a && b
+    case 'OR': return a || b
+    case 'NAND': return !(a && b)
+    case 'NOR': return !(a || b)
+    case 'XOR': return a !== b
+    case 'NOT': return !a
+  }
 }
 
 // 继电器/逻辑门参数常量

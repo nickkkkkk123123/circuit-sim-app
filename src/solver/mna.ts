@@ -1,7 +1,7 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
-import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf, RELAY_ITH, RELAY_COIL_R, GATE_VTH, GATE_R_ON, GATE_R_PULL } from './types'
+import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf, RELAY_ITH, RELAY_COIL_R, GATE_VTH, GATE_R_ON, GATE_R_PULL, gateTruth } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
@@ -318,7 +318,7 @@ export function solve(circuit: Circuit): SolveResult {
         const vn2 = (V[idx.get(`${g.id}:b`)!] ?? 0) - (V[idx.get(`${g.id}:d`)!] ?? 0)
         const high1 = vn1 > GATE_VTH
         const high2 = vn2 > GATE_VTH
-        const next = g.type === 'AND' ? high1 && high2 : g.type === 'OR' ? high1 || high2 : !high1
+        const next = gateTruth(g.type, high1, high2)
         if (next !== gateOut.get(g.id)) { gateOut.set(g.id, next); flipped = true }
       }
       if (!flipped) break

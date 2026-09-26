@@ -3,7 +3,7 @@ import type { Circuit, Wire } from './solver/types'
 
 export interface Experiment {
   id: string
-  group: '基础' | '必修三 · 电学实验' | '拓展'
+  group: '基础' | '必修三 · 电学实验' | '拓展' | '数字电路'
   name: string
   desc: string // 一句话教学点，展示在选择卡片上
   detail: string // 详细原理/步骤（换行符分隔），选中后在详情窗口展示
@@ -188,6 +188,137 @@ export const EXPERIMENTS: Experiment[] = [
         W('w6', 'bat:b', 'r4:a'),
         W('w7', 'g:a', 'r1:a'),
         W('w8', 'g:b', 'r4:b'),
+      ],
+    }),
+  },
+
+  // ── 数字电路：从欧姆定律到计算机 ──
+  // 输入约定：开关闭合=高电平(1)，断开=门内部 10MΩ 下拉读作 0
+  // 输出约定：LED 串 150Ω 限流电阻接回负极，门输出高 → 灯亮
+  {
+    id: 'half-adder',
+    group: '数字电路',
+    name: '半加器（一位二进制加法）',
+    desc: '两个开关输入 0/1，异或门出"和"、与门出"进位"——这就是计算器心脏的最小样本',
+    detail: '【这个实验在干嘛】\n用两个逻辑门搭出一位二进制加法器（半加器）：输入两个二进制位 A 和 B，输出"和"与"进位"。你手机里的处理器每秒做几十亿次加法，最小的零件就是眼前这个电路。\n【电路结构】\n开关 A、B 分别接异或门和与门的输入：异或门输出"和"（相同为 0、不同为 1），与门输出"进位"（只有 1+1 才进位）。每根输出串一个 150Ω 限流电阻保护 LED。\n【真值表自己验】\n0+0=0（两灯全灭）｜1+0=1（和=1）｜0+1=1（和=1）｜1+1=10（和=0、进位=1）\n【一步一步做】\n① 只闭合 A：和灯亮、进位灯灭 → 1+0=1\n② 再闭合 B：和灯灭、进位灯亮 → 1+1=10（二进制的"二"）\n③ 试着解释：为什么"和"用的是异或门而不是或门？（提示：1 和 1 相遇时，或门会说 1+1=1，数学就崩了）\n【和高中物理的关系】\n门只认识"高电平/低电平"，而高电平是真实的 6V 电压、由欧姆定律支配的电流撑起来的。数字世界底层全是模拟电路。',
+    build: () => ({
+      comps: [
+        { id: 'bat', kind: 'battery', x: 160, y: 430, rot: 90, emf: 6, r: 0.5, expanded: false },
+        { id: 'swA', kind: 'switch', x: 140, y: 140, rot: 90, closed: false },
+        { id: 'swB', kind: 'switch', x: 240, y: 140, rot: 90, closed: false },
+        { id: 'gx', kind: 'gate', x: 400, y: 130, rot: 0, type: 'XOR' },
+        { id: 'ga', kind: 'gate', x: 400, y: 260, rot: 0, type: 'AND' },
+        { id: 'rs', kind: 'resistor', x: 520, y: 130, rot: 0, r: 150 },
+        { id: 'rc', kind: 'resistor', x: 520, y: 260, rot: 0, r: 150 },
+        { id: 'ls', kind: 'led', x: 620, y: 130, rot: 0 },
+        { id: 'lc', kind: 'led', x: 620, y: 260, rot: 0 },
+      ],
+      wires: [
+        // 电源轨
+        W('w01', 'bat:a', 'swA:a'), W('w02', 'bat:a', 'swB:a'),
+        W('w03', 'bat:a', 'gx:c'), W('w04', 'bat:a', 'ga:c'),
+        W('w05', 'bat:b', 'gx:d'), W('w06', 'bat:b', 'ga:d'),
+        W('w07', 'bat:b', 'ls:b'), W('w08', 'bat:b', 'lc:b'),
+        // 输入：两开关并联进两个门的对应输入
+        W('w09', 'swA:b', 'gx:a'), W('w10', 'swA:b', 'ga:a'),
+        W('w11', 'swB:b', 'gx:b'), W('w12', 'swB:b', 'ga:b'),
+        // 输出：门 → 限流电阻 → LED
+        W('w13', 'gx:p', 'rs:a'), W('w14', 'rs:b', 'ls:a'),
+        W('w15', 'ga:p', 'rc:a'), W('w16', 'rc:b', 'lc:a'),
+      ],
+    }),
+  },
+  {
+    id: 'full-adder',
+    group: '数字电路',
+    name: '全加器（带进位输入）',
+    desc: '5 个门：A+B+低位进位=和与新高进位。多个全加器手拉手就能算任意位数',
+    detail: '【这个实验在干嘛】\n半加器不会接收低位传来的进位，只能算一位。全加器多一个"进位输入 Cin"，三个一位数相加：A+B+Cin，输出"和"与新进位。它才是真正能拼起来算多位数的积木。\n【电路结构】\n两个异或门负责"和"：先算 A⊕B，再 ⊕Cin。两个与门 + 一个或门负责"新进位"：A·B 与 (A⊕B)·Cin 只要有一个是 1 就进位。共 5 个门。\n【自己验一道题】\n1+1+0：闭合 A、B（Cin 断开）。和=0、进位=1——和半加器一样。再闭合 Cin 变成 1+1+1：和=1、进位=1（三在二进制里是 11）。\n【为什么要手拉手】\n把一个半加器和 N-1 个全加器串起来，低位进位接高位 Cin，就是 N 位加法器——你电脑里 CPU 的整数加法器就是这个原理的极速版本。第一个预设里的半加器，其实就是全加器把 Cin 接地的特例。\n【思考】\n5 个门要 5 组电源（VCC 和 GND），为什么每个门都要独立接电源？（提示：门输出的能量来自自己的电源，不是输入——输入只是"告诉"它怎么连接电源）',
+    build: () => ({
+      comps: [
+        { id: 'bat', kind: 'battery', x: 100, y: 500, rot: 90, emf: 6, r: 0.5, expanded: false },
+        { id: 'swA', kind: 'switch', x: 130, y: 120, rot: 90, closed: false },
+        { id: 'swB', kind: 'switch', x: 130, y: 210, rot: 90, closed: false },
+        { id: 'swC', kind: 'switch', x: 130, y: 300, rot: 90, closed: false },
+        { id: 'x1', kind: 'gate', x: 320, y: 130, rot: 0, type: 'XOR' },
+        { id: 'x2', kind: 'gate', x: 500, y: 170, rot: 0, type: 'XOR' },
+        { id: 'a1', kind: 'gate', x: 320, y: 300, rot: 0, type: 'AND' },
+        { id: 'a2', kind: 'gate', x: 500, y: 330, rot: 0, type: 'AND' },
+        { id: 'o1', kind: 'gate', x: 670, y: 330, rot: 0, type: 'OR' },
+        { id: 'rss', kind: 'resistor', x: 620, y: 130, rot: 0, r: 150 },
+        { id: 'rsc', kind: 'resistor', x: 800, y: 330, rot: 0, r: 150 },
+        { id: 'ls', kind: 'led', x: 720, y: 130, rot: 0 },
+        { id: 'lc', kind: 'led', x: 900, y: 330, rot: 0 },
+      ],
+      wires: [
+        // 电源轨：正极接 3 开关 + 5 门 VCC；负极接 5 门 GND + 2 LED 回线
+        W('w01', 'bat:a', 'swA:a'), W('w02', 'bat:a', 'swB:a'), W('w03', 'bat:a', 'swC:a'),
+        W('w04', 'bat:a', 'x1:c'), W('w05', 'bat:a', 'x2:c'), W('w06', 'bat:a', 'a1:c'), W('w07', 'bat:a', 'a2:c'), W('w08', 'bat:a', 'o1:c'),
+        W('w09', 'bat:b', 'x1:d'), W('w10', 'bat:b', 'x2:d'), W('w11', 'bat:b', 'a1:d'), W('w12', 'bat:b', 'a2:d'), W('w13', 'bat:b', 'o1:d'),
+        W('w14', 'bat:b', 'ls:b'), W('w15', 'bat:b', 'lc:b'),
+        // 信号
+        W('w16', 'swA:b', 'x1:a'), W('w17', 'swA:b', 'a1:a'),
+        W('w18', 'swB:b', 'x1:b'), W('w19', 'swB:b', 'a1:b'),
+        W('w20', 'x1:p', 'x2:a'), W('w21', 'x1:p', 'a2:a'),
+        W('w22', 'swC:b', 'x2:b'), W('w23', 'swC:b', 'a2:b'),
+        W('w24', 'a1:p', 'o1:a'), W('w25', 'a2:p', 'o1:b'),
+        // 输出
+        W('w26', 'x2:p', 'rss:a'), W('w27', 'rss:b', 'ls:a'),
+        W('w28', 'o1:p', 'rsc:a'), W('w29', 'rsc:b', 'lc:a'),
+      ],
+    }),
+  },
+  {
+    id: 'add2bit',
+    group: '数字电路',
+    name: '两位加法器（迷你计算器）',
+    desc: '1 个半加器 + 1 个全加器串联：算 1+1 到 3+3，三个 LED 直接读出二进制答案（最大 110=6）',
+    detail: '【这个实验在干嘛】\n把半加器和全加器串成两位二进制加法器：输入 A=A1A0、B=B1B0（各 0~3），输出三位二进制和 S2S1S0（0~6）。这就是一台能算加法的"迷你计算机"——所有计算器、CPU 的算术单元，往下拆到最底层就是这么长的。\n【电路结构】\n低位（第 0 位）用半加器：A0⊕B0=和 S0，A0·B0=进位 C0。高位（第 1 位）用全加器：A1、B1 与低位进位 C0 三者相加，出 S1 和最终进位 S2。\n【一步一步做】\n① 只闭合 A0、B0（1+1=2）：S1 亮、S0 灭——本位 1+1=0，进位 1 由 S1 读出，二进制 010\n② 再闭合 A1、B1（3+3=6）：S2、S1 亮、S0 灭，二进制 110——最大的和，进位顶到了最高位\n③ 自己出题：闭合 A1、B0（2+1）三个灯怎么亮？（答案：10+01=11，S1、S0 亮，S2 灭）\n【你应该意识到的事】\n这个电路没有"计算"这个动作——电流每一瞬间都按欧姆定律在流动，所谓"算术"只是逻辑门把电压高低重新编排了一遍。计算机不神秘，神秘的是把它堆了 100 亿个。\n【数电黑话对照】\n半加器=Half Adder；全加器=Full Adder；这种低位进位传高位的方式叫"行波进位"，是加法器最朴素的实现。',
+    build: () => ({
+      comps: [
+        { id: 'bat', kind: 'battery', x: 80, y: 560, rot: 90, emf: 6, r: 0.5, expanded: false },
+        { id: 'swA0', kind: 'switch', x: 120, y: 100, rot: 90, closed: false },
+        { id: 'swB0', kind: 'switch', x: 120, y: 190, rot: 90, closed: false },
+        { id: 'swA1', kind: 'switch', x: 120, y: 300, rot: 90, closed: false },
+        { id: 'swB1', kind: 'switch', x: 120, y: 390, rot: 90, closed: false },
+        // 第 0 位：半加器
+        { id: 'x0', kind: 'gate', x: 300, y: 110, rot: 0, type: 'XOR' },
+        { id: 'a0', kind: 'gate', x: 300, y: 210, rot: 0, type: 'AND' },
+        // 第 1 位：全加器
+        { id: 'x1', kind: 'gate', x: 300, y: 320, rot: 0, type: 'XOR' },
+        { id: 'a1', kind: 'gate', x: 300, y: 430, rot: 0, type: 'AND' },
+        { id: 'x2', kind: 'gate', x: 480, y: 370, rot: 0, type: 'XOR' },
+        { id: 'a2', kind: 'gate', x: 480, y: 480, rot: 0, type: 'AND' },
+        { id: 'o1', kind: 'gate', x: 640, y: 480, rot: 0, type: 'OR' },
+        // 输出：S0（低位和）、S1（高位和）、S2（最终进位）
+        { id: 'rs0', kind: 'resistor', x: 700, y: 110, rot: 0, r: 150 },
+        { id: 'rs1', kind: 'resistor', x: 700, y: 370, rot: 0, r: 150 },
+        { id: 'rs2', kind: 'resistor', x: 820, y: 480, rot: 0, r: 150 },
+        { id: 'l0', kind: 'led', x: 800, y: 110, rot: 0 },
+        { id: 'l1', kind: 'led', x: 800, y: 370, rot: 0 },
+        { id: 'l2', kind: 'led', x: 920, y: 480, rot: 0 },
+      ],
+      wires: [
+        // 电源轨
+        W('w01', 'bat:a', 'swA0:a'), W('w02', 'bat:a', 'swB0:a'), W('w03', 'bat:a', 'swA1:a'), W('w04', 'bat:a', 'swB1:a'),
+        W('w05', 'bat:a', 'x0:c'), W('w06', 'bat:a', 'a0:c'), W('w07', 'bat:a', 'x1:c'), W('w08', 'bat:a', 'a1:c'), W('w09', 'bat:a', 'x2:c'), W('w10', 'bat:a', 'a2:c'), W('w11', 'bat:a', 'o1:c'),
+        W('w12', 'bat:b', 'x0:d'), W('w13', 'bat:b', 'a0:d'), W('w14', 'bat:b', 'x1:d'), W('w15', 'bat:b', 'a1:d'), W('w16', 'bat:b', 'x2:d'), W('w17', 'bat:b', 'a2:d'), W('w18', 'bat:b', 'o1:d'),
+        W('w19', 'bat:b', 'l0:b'), W('w20', 'bat:b', 'l1:b'), W('w21', 'bat:b', 'l2:b'),
+        // 第 0 位输入
+        W('w22', 'swA0:b', 'x0:a'), W('w23', 'swA0:b', 'a0:a'),
+        W('w24', 'swB0:b', 'x0:b'), W('w25', 'swB0:b', 'a0:b'),
+        // 第 1 位输入
+        W('w26', 'swA1:b', 'x1:a'), W('w27', 'swA1:b', 'a1:a'),
+        W('w28', 'swB1:b', 'x1:b'), W('w29', 'swB1:b', 'a1:b'),
+        // 进位链：C0 = a0 输出 → 全加器 Cin
+        W('w30', 'a0:p', 'x2:b'), W('w31', 'a0:p', 'a2:b'),
+        // 全加器内部
+        W('w32', 'x1:p', 'x2:a'), W('w33', 'x1:p', 'a2:a'),
+        W('w34', 'a1:p', 'o1:a'), W('w35', 'a2:p', 'o1:b'),
+        // 输出
+        W('w36', 'x0:p', 'rs0:a'), W('w37', 'rs0:b', 'l0:a'),
+        W('w38', 'x2:p', 'rs1:a'), W('w39', 'rs1:b', 'l1:a'),
+        W('w40', 'o1:p', 'rs2:a'), W('w41', 'rs2:b', 'l2:a'),
       ],
     }),
   },

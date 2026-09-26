@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { solve } from './mna'
-import type { Circuit, Comp, Wire } from './types'
+import type { Circuit, Comp, Gate, Wire } from './types'
+import { EXPERIMENTS } from '../experiments'
 
 function build(comps: Comp[], wires: Wire[]): Circuit {
   return { comps, wires }
@@ -65,7 +66,7 @@ describe('继电器', () => {
 
 describe('逻辑门', () => {
   // 电源：6V 接 VCC/GND；输入按真值表接高(6V)或低(GND)
-  function gateCircuit(type: 'AND' | 'OR' | 'NOT', in1High: boolean, in2High: boolean): Circuit {
+  function gateCircuit(type: Gate['type'], in1High: boolean, in2High: boolean): Circuit {
     const comps: Comp[] = [
       { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.1 },
       { id: 'g1', kind: 'gate', x: 0, y: 0, rot: 0, type },
@@ -94,5 +95,70 @@ describe('逻辑门', () => {
   it('NOT：0→高电平，1→低电平', () => {
     expect(outV(solve(gateCircuit('NOT', false, false)))).toBeGreaterThan(5)
     expect(outV(solve(gateCircuit('NOT', true, false)))).toBeLessThan(0.5)
+  })
+
+  it('NAND：11→低，10→高（AND 取反）', () => {
+    expect(outV(solve(gateCircuit('NAND', true, true)))).toBeLessThan(0.5)
+    expect(outV(solve(gateCircuit('NAND', true, false)))).toBeGreaterThan(5)
+    expect(outV(solve(gateCircuit('NAND', false, false)))).toBeGreaterThan(5)
+  })
+
+  it('NOR：11/10→低，00→高（OR 取反）', () => {
+    expect(outV(solve(gateCircuit('NOR', true, true)))).toBeLessThan(0.5)
+    expect(outV(solve(gateCircuit('NOR', true, false)))).toBeLessThan(0.5)
+    expect(outV(solve(gateCircuit('NOR', false, false)))).toBeGreaterThan(5)
+  })
+
+  it('XOR：10/01→高，11/00→低', () => {
+    expect(outV(solve(gateCircuit('XOR', true, false)))).toBeGreaterThan(5)
+    expect(outV(solve(gateCircuit('XOR', false, true)))).toBeGreaterThan(5)
+    expect(outV(solve(gateCircuit('XOR', true, true)))).toBeLessThan(0.5)
+    expect(outV(solve(gateCircuit('XOR', false, false)))).toBeLessThan(0.5)
+  })
+})
+
+describe('数字电路预设（加法器全家）', () => {
+  // 载入预设并把指定开关置为闭合（=1），其余保持断开（=0，门内 10MΩ 下拉读低）
+  function presetOf(id: string, closed: string[]): Circuit {
+    const exp = EXPERIMENTS.find((e) => e.id === id)!
+    const c = exp.build()
+    return {
+      comps: c.comps.map((k) => (k.kind === 'switch' && closed.includes(k.id) ? { ...k, closed: true } : k)),
+      wires: c.wires,
+    }
+  }
+  const lit = (r: ReturnType<typeof solve>, id: string) => (r.byComp[id]?.current ?? 0) > 0.01
+
+  it('半加器：1+0=1（仅和灯亮），1+1=10（仅进位灯亮）', () => {
+    const r10 = solve(presetOf('half-adder', ['swA']))
+    expect(lit(r10, 'ls')).toBe(true)
+    expect(lit(r10, 'lc')).toBe(false)
+    const r11 = solve(presetOf('half-adder', ['swA', 'swB']))
+    expect(lit(r11, 'ls')).toBe(false)
+    expect(lit(r11, 'lc')).toBe(true)
+  })
+
+  it('全加器：1+1+1=11（和与进位都亮），0+0+1=1', () => {
+    const r111 = solve(presetOf('full-adder', ['swA', 'swB', 'swC']))
+    expect(lit(r111, 'ls')).toBe(true)
+    expect(lit(r111, 'lc')).toBe(true)
+    const r001 = solve(presetOf('full-adder', ['swC']))
+    expect(lit(r001, 'ls')).toBe(true)
+    expect(lit(r001, 'lc')).toBe(false)
+  })
+
+  it('两位加法器：1+1=010（S1 亮），3+3=110（S2/S1 亮），2+1=011', () => {
+    const r2 = solve(presetOf('add2bit', ['swA0', 'swB0']))
+    expect(lit(r2, 'l1')).toBe(true)
+    expect(lit(r2, 'l0')).toBe(false)
+    expect(lit(r2, 'l2')).toBe(false)
+    const r6 = solve(presetOf('add2bit', ['swA0', 'swB0', 'swA1', 'swB1']))
+    expect(lit(r6, 'l2')).toBe(true)
+    expect(lit(r6, 'l1')).toBe(true)
+    expect(lit(r6, 'l0')).toBe(false)
+    const r3 = solve(presetOf('add2bit', ['swA1', 'swB0']))
+    expect(lit(r3, 'l1')).toBe(true)
+    expect(lit(r3, 'l0')).toBe(true)
+    expect(lit(r3, 'l2')).toBe(false)
   })
 })

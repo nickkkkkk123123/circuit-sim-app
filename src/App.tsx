@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve, type SolveResult } from './solver/mna'
 import { stepTransient, type TransientState } from './solver/transient'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts, type Gate } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { THEME as T } from './theme'
 
@@ -339,6 +339,8 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
         )
       })()}
       {c.kind === 'gate' && (() => {
+        const bubble = c.type === 'NOT' || c.type === 'NAND' || c.type === 'NOR'
+        const body = c.type === 'AND' || c.type === 'NAND' ? GATE_BODY.AND : c.type === 'NOT' ? GATE_BODY.NOT : GATE_BODY.OR
         return (
           <>
             <text x={0} y={-42} textAnchor="middle" fontSize={12} fontWeight={600} fill={gateOut ? T.readout : T.label}>
@@ -346,9 +348,10 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
             </text>
             <line x1={-32} y1={-16} x2={-20} y2={-16} stroke={stroke} strokeWidth={2} />
             <line x1={-32} y1={16} x2={-20} y2={16} stroke={stroke} strokeWidth={2} />
-            <path d={GATE_BODY[c.type]} fill="none" stroke={stroke} strokeWidth={2.5} />
-            {c.type === 'NOT' && <circle cx={19} cy={0} r={4} fill="none" stroke={stroke} strokeWidth={2.5} />}
-            <line x1={c.type === 'NOT' ? 23 : 24} y1={0} x2={36} y2={0} stroke={stroke} strokeWidth={2} />
+            <path d={body} fill="none" stroke={stroke} strokeWidth={2.5} />
+            {c.type === 'XOR' && <path d="M -27 -24 C -20 -14 -20 14 -27 24" fill="none" stroke={stroke} strokeWidth={2} />}
+            {bubble && <circle cx={19} cy={0} r={4} fill="none" stroke={stroke} strokeWidth={2.5} />}
+            <line x1={bubble ? 23 : 24} y1={0} x2={36} y2={0} stroke={stroke} strokeWidth={2} />
             <text x={4} y={-27} fontSize={8} fill={T.label}>VCC</text>
             <text x={2} y={41} fontSize={8} fill={T.label}>GND</text>
           </>
@@ -1816,7 +1819,7 @@ export default function App() {
               )
             })()}
             {selected.kind === 'gate' && (() => {
-              const btn = (t: 'AND' | 'OR' | 'NOT', text: string) => (
+              const btn = (t: Gate['type'], text: string) => (
                 <button className="wide" disabled={selected.type === t}
                   onClick={() => s.updateParam(selected.id, 'type', t)}>
                   {text}{selected.type === t ? '（当前）' : ''}
@@ -1825,7 +1828,10 @@ export default function App() {
               return (
                 <>
                   {btn('AND', '与门 AND（输入全高才输出高）')}
+                  {btn('NAND', '与非门 NAND（万能门，可搭所有逻辑）')}
                   {btn('OR', '或门 OR（任一输入高就输出高）')}
+                  {btn('NOR', '或非门 NOR（万能门另一门派）')}
+                  {btn('XOR', '异或门 XOR（不同才输出高，加法器核心）')}
                   {btn('NOT', '非门 NOT（输入高则输出低）')}
                   <p className="warn" style={{ margin: 0 }}>
                     ⚠ VCC(c) 和 GND(d) 必须接电源，门才能工作。输入 ≥1.5V 为高电平。
@@ -2452,9 +2458,18 @@ export default function App() {
             <section>
               <h3>组合逻辑门</h3>
               <div className="exp-cards">
-                {(['AND', 'OR', 'NOT'] as const).map((t) => {
-                  const name = t === 'AND' ? '与门 AND' : t === 'OR' ? '或门 OR' : '非门 NOT'
-                  const desc = t === 'AND' ? '输入全高才输出高（Y = A·B）' : t === 'OR' ? '任一输入高就输出高（Y = A+B）' : '输入高则输出低（Y = Ā，只用输入 a）'
+                {(['AND', 'NAND', 'OR', 'NOR', 'XOR', 'NOT'] as const).map((t) => {
+                  const name = { AND: '与门 AND', NAND: '与非门 NAND', OR: '或门 OR', NOR: '或非门 NOR', XOR: '异或门 XOR', NOT: '非门 NOT' }[t]
+                  const desc = {
+                    AND: '输入全高才输出高（Y = A·B）',
+                    NAND: '先与后取反——万能门，可搭出所有逻辑（Y = ¬(A·B)）',
+                    OR: '任一输入高就输出高（Y = A+B）',
+                    NOR: '先或后取反——另一门派万能门（Y = ¬(A+B)）',
+                    XOR: '输入不同才输出高——加法器的核心（Y = A⊕B）',
+                    NOT: '输入高则输出低（Y = Ā，只用输入 a）',
+                  }[t]
+                  const bubble = t === 'NOT' || t === 'NAND' || t === 'NOR'
+                  const body = t === 'AND' || t === 'NAND' ? GATE_BODY.AND : t === 'NOT' ? GATE_BODY.NOT : GATE_BODY.OR
                   return (
                     <button
                       key={t}
@@ -2469,9 +2484,10 @@ export default function App() {
                           <line x1={-32} y1={16} x2={-20} y2={16} className="gate-mini-line" />
                         </>)}
                         {t === 'NOT' && <line x1={-32} y1={0} x2={-20} y2={0} className="gate-mini-line" />}
-                        <path d={GATE_BODY[t]} className="gate-mini-line" />
-                        {t === 'NOT' && <circle cx={19} cy={0} r={4} className="gate-mini-line" />}
-                        <line x1={24} y1={0} x2={32} y2={0} className="gate-mini-line" />
+                        {t === 'XOR' && <path d="M -27 -24 C -20 -14 -20 14 -27 24" className="gate-mini-line" />}
+                        <path d={body} className="gate-mini-line" />
+                        {bubble && <circle cx={19} cy={0} r={4} className="gate-mini-line" />}
+                        <line x1={bubble ? 23 : 24} y1={0} x2={32} y2={0} className="gate-mini-line" />
                       </svg>
                     </button>
                   )
@@ -2493,7 +2509,7 @@ export default function App() {
               <h2>选择实验电路</h2>
               <button className="icon-btn" onClick={() => s.setDemoOpen(false)} title="关闭">×</button>
             </div>
-            {['基础', '必修三 · 电学实验', '拓展'].map((group) => {
+            {['基础', '必修三 · 电学实验', '拓展', '数字电路'].map((group) => {
               const items = EXPERIMENTS.filter((e) => e.group === group)
               if (!items.length) return null
               return (
