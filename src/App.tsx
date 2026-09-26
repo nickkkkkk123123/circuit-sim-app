@@ -1792,9 +1792,10 @@ export default function App() {
             })()}
             {selected.kind === 'relay' && (() => {
               const coilI = selResult?.current ?? 0
+              const on = !!result.relayOn?.[selected.id]
               return (
                 <p className="warn" style={{ margin: 0 }}>
-                  线圈电流 { (coilI * 1000).toFixed(1)}mA（阈值 10mA）· 当前{relayOn ? '吸合：COM 接 NO' : '释放：COM 接 NC'}。
+                  线圈电流 { (coilI * 1000).toFixed(1)}mA（阈值 10mA）· 当前{on ? '吸合：COM 接 NO' : '释放：COM 接 NC'}。
                   线圈接 a/b，触点接 c(COM)/d(NC)/p(NO)。给线圈通足够大的电流，看触点切换点亮另一条回路的灯。
                 </p>
               )
