@@ -4,15 +4,16 @@
 // 状态量 = 电荷 Q（不是电压）：平行板实验中 Q 不变而 C 变（拖动极板）时，U = Q/C 才会正确升高。
 // 交流源：每步 emf = E·sin(2πf·(t+dt/2))（中点取样），引擎维护绝对仿真时间 t。
 import type { Circuit } from './types'
-import { capC } from './types'
+import { capC, multiKindOf } from './types'
 import { solve, type SolveResult } from './mna'
 
 export interface TransientState {
   qcap: Record<string, number> // 电容 id → 极板电荷 Q（C）
   t: number // 仿真时间（秒）
+  acAcc: Record<string, number> // 万用表交流档（ACV/ACA）瞬时平方的指数滑动平均（EMA，τ=30ms）；读数 = √值
 }
 
-export const emptyTransient = (): TransientState => ({ qcap: {}, t: 0 })
+export const emptyTransient = (): TransientState => ({ qcap: {}, t: 0, acAcc: {} })
 
 /** 单步瞬态求解：dt 为本步时长（秒）；返回新状态与该步的解 */
 export function stepTransient(circuit: Circuit, state: TransientState, dt: number): { result: SolveResult; state: TransientState } {
@@ -39,5 +40,18 @@ export function stepTransient(circuit: Circuit, state: TransientState, dt: numbe
   for (const k of Object.keys(qcap)) {
     if (!circuit.comps.some((c) => c.id === k && c.kind === 'capacitor')) delete qcap[k]
   }
-  return { result, state: { qcap, t: state.t + dt } }
+  // 交流档（ACV/ACA）真有效值：瞬时平方 EMA（τ=30ms），读数 = √值。ACV 测表笔间电压，ACA 测串联电流
+  const acAcc: Record<string, number> = { ...state.acAcc }
+  const alpha = Math.min(1, dt / 0.03)
+  for (const c of circuit.comps) {
+    if (c.kind !== 'multimeter') continue
+    const kind = multiKindOf(c.mode)
+    if (kind !== 'ACV' && kind !== 'ACA') { delete acAcc[c.id]; continue }
+    const x = kind === 'ACV'
+      ? (c.pa && c.pb && result.nodes ? (result.nodes[c.pa] ?? 0) - (result.nodes[c.pb] ?? 0) : (result.byComp[c.id]?.dv ?? 0))
+      : (result.byComp[c.id]?.current ?? 0)
+    const prev = acAcc[c.id] ?? 0
+    acAcc[c.id] = prev + (x * x - prev) * alpha
+  }
+  return { result, state: { qcap, t: state.t + dt, acAcc } }
 }

@@ -235,21 +235,22 @@ export function solve(circuit: Circuit, hints?: SolveHints): SolveResult {
       case 'multimeter': {
         // 测量支路的连接点：双表笔吸附时 = 两表笔所在的端子（真表行为：电流档经表笔导通、
         // 电压档经表内 10MΩ、Ω 档走零源辅助解）；未吸附 = 元件 a/b 接线端子。
-        // OFF/AC/蜂鸣/CAP/hFE/未支持量程 = 开路（未模拟档无读数）
+        // OFF/蜂鸣/CAP/hFE/未支持量程 = 开路（未模拟档无读数）。ACV/ACA 接法同 V/A，读数走瞬态 RMS
         const kind = multiKindOf(c.mode)
+        const k2 = kind === 'ACV' ? 'V' : kind === 'ACA' ? 'A' : kind
         const probed = !!(c.pa && c.pb && idx.has(c.pa) && idx.has(c.pb))
         const na2 = probed ? find(c.pa!) : na
         const nb2 = probed ? find(c.pb!) : nb
         if (!kind) { addRes(c.id, 'multimeter', na, nb, 1e9); break }
-        if (kind === 'Ω') { addRes(c.id, 'multimeter', na2, nb2, 1e9); break }
+        if (k2 === 'Ω') { addRes(c.id, 'multimeter', na2, nb2, 1e9); break }
         const range = multiRangeOf(c.mode, c.range) ?? 0
         if (c.style === 'classic') {
-          const r = kind === 'V'
+          const r = k2 === 'V'
             ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
             : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
           addRes(c.id, 'multimeter', na2, nb2, r)
         } else {
-          addRes(c.id, 'multimeter', na2, nb2, kind === 'V' ? 1e7 : 0.01)
+          addRes(c.id, 'multimeter', na2, nb2, k2 === 'V' ? 1e7 : 0.01)
         }
         break
       }

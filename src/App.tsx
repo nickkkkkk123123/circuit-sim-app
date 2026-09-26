@@ -66,7 +66,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relayOn, gateOut, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relayOn, gateOut, multiRms, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -81,6 +81,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
   probeDv?: number | null // 表笔吸附时的电压读数（红笔端 − 黑笔端）
   relayOn?: boolean // 继电器吸合状态
   gateOut?: boolean // 逻辑门输出状态
+  multiRms?: number | null // 万用表交流档的真有效值（瞬态引擎 EMA 的 √；null=引擎未运行）
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -94,10 +95,16 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
   const ohmR = isOhm ? (ohmReading ?? Infinity) : 0
   const isMulti = c.kind === 'multimeter'
   // 数字读数（数显/经典共用画布文字）：V 带符号 / A 带符号（经典按内阻换算）/ Ω 走零源辅助解，超量程显示 OL
+  // 交流档（ACV/ACA）：显示瞬态引擎累计的真有效值 RMS，引擎未运行时显示 ---
   const multiLcd = isMulti ? (() => {
     const kind = multiKindOf(c.mode)
     if (!kind) return '' // OFF / 未模拟档：LCD 熄灭
     const range = multiRangeOf(c.mode, c.range)
+    if (kind === 'ACV' || kind === 'ACA') {
+      if (multiRms == null) return '---'
+      const lim = kind === 'ACV' ? 20 : 10
+      return multiRms > lim ? 'OL' : multiRms.toFixed(kind === 'ACV' ? 2 : 3)
+    }
     if (kind === 'V') {
       const v = probeDv !== null && probeDv !== undefined ? probeDv : (solved?.dv ?? 0)
       return Math.abs(v) > (c.style === 'classic' ? (range ?? 2.5) : 20) ? 'OL' : v.toFixed(2)
@@ -1024,11 +1031,12 @@ export default function App() {
   const hasDyn = s.comps.some((c) => c.kind === 'capacitor' || c.kind === 'acsource')
   const capQRef = useRef<Record<string, number>>({})
   const tRef = useRef(0)
+  const acAccRef = useRef<Record<string, number>>({}) // 万用表交流档的瞬时平方 EMA（读数=√值）
   const curveRef = useRef<Record<string, number[]>>({})
   const [tResult, setTResult] = useState<SolveResult | null>(null)
   const [speed, setSpeed] = useState(0.05) // 仿真流速（真实秒×倍率），0=暂停
   useEffect(() => {
-    if (!hasDyn) { setTResult(null); return }
+    if (!hasDyn) { setTResult(null); acAccRef.current = {}; return }
     let raf = 0
     let last = performance.now()
     const DT = 0.0002 // 单步 0.2ms
@@ -1036,7 +1044,7 @@ export default function App() {
       const dtReal = Math.min((now - last) / 1000, 0.05)
       last = now
       let remaining = dtReal * speed
-      let st: TransientState = { qcap: capQRef.current, t: tRef.current }
+      let st: TransientState = { qcap: capQRef.current, t: tRef.current, acAcc: acAccRef.current }
       let res: SolveResult | null = null
       let guard = 0
       while (remaining > 1e-6 && guard++ < 250) {
@@ -1048,6 +1056,7 @@ export default function App() {
       }
       capQRef.current = st.qcap
       tRef.current = st.t
+      acAccRef.current = st.acAcc
       // U-t 曲线采样（每电容保留 400 点），并清理已删元件
       for (const k of Object.keys(curveRef.current)) {
         if (!s.comps.some((c) => c.id === k)) delete curveRef.current[k]
@@ -1064,6 +1073,8 @@ export default function App() {
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
   }, [hasDyn, s.comps, s.wires, speed])
+  const acRmsOf = (id: string): number | null =>
+    tResult && acAccRef.current[id] != null ? Math.sqrt(acAccRef.current[id]) : null
   const result = tResult ?? staticResult
 
   // 持久化：电路一变就存
@@ -1625,6 +1636,7 @@ export default function App() {
                 probeDv={multiProbeDv(c)}
                 relayOn={result.relayOn?.[c.id]}
                 gateOut={result.gateOut?.[c.id]}
+                multiRms={c.kind === 'multimeter' ? acRmsOf(c.id) : undefined}
                 ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -2179,9 +2191,12 @@ export default function App() {
           }
           // 数显款：LCD 读数 + 真机档位环旋钮（OFF/DCV/ACV/DCA/ACA/蜂鸣/Ω/CAP/hFE）
           const probedV = multiProbeDv(c)
-          const v = mode === 'DCV' ? (probedV ?? (solvedM?.dv ?? 0)) : mode === 'DCA' ? (solvedM?.dv ?? 0) / 0.01 : (result.ohm?.[c.id] ?? Infinity)
-          const ol = (mode === 'DCV' && Math.abs(v) > 20) || (mode === 'DCA' && Math.abs(v) > 10)
-          const disp = mode === 'DCV' ? (ol ? 'OL' : v.toFixed(2)) : mode === 'DCA' ? (ol ? 'OL' : v.toFixed(3)) : mode === 'OHM' ? fmtOhm(v) : ''
+          const rms = acRmsOf(c.id)
+          const v = mode === 'DCV' ? (probedV ?? (solvedM?.dv ?? 0)) : mode === 'ACV' ? (rms ?? NaN) : mode === 'DCA' ? (solvedM?.dv ?? 0) / 0.01 : mode === 'ACA' ? (rms ?? NaN) : (result.ohm?.[c.id] ?? Infinity)
+          const ol = (mode === 'DCV' && Math.abs(v) > 20) || (mode === 'DCA' && Math.abs(v) > 10) || ((mode === 'ACV' || mode === 'ACA') && rms != null && rms > (mode === 'ACV' ? 20 : 10))
+          const disp = mode === 'DCV' ? (ol ? 'OL' : v.toFixed(2)) : mode === 'DCA' ? (ol ? 'OL' : v.toFixed(3))
+            : mode === 'ACV' ? (rms == null ? '---' : ol ? 'OL' : v.toFixed(2)) : mode === 'ACA' ? (rms == null ? '---' : ol ? 'OL' : v.toFixed(3))
+            : mode === 'OHM' ? fmtOhm(v) : ''
           const onKnob = (key: string) => s.updateParam(c.id, 'mode', key as typeof mode)
           const unitTxt = mode === 'OHM' ? '' : mode === 'OFF' ? '' : MULTI_SUPPORTED(mode) ? mode : ''
           return (
@@ -2223,7 +2238,9 @@ export default function App() {
                     ? '两根表笔跨接在被测元件两端（自动吸附），读数 = 等效电阻（所有电源置零）。'
                       + (live ? '⚠ 电路带电——测单个元件请断开一端。' : '')
                       + (v >= 1e7 ? ' 当前两端断路（∞）。' : '')
-                    : '⚠ 该档位为真机档位（交流/蜂鸣/电容/hFE），本实验台暂未模拟——旋到 DCV/DCA/Ω 测量。'}
+                    : mode === 'ACV' || mode === 'ACA'
+                    ? '交流有效值（RMS）档：接法同 DCV/DCA。读数 = 瞬时值平方平均的平方根，即"发热等效"的直流值——交流 6V 峰值读 4.24。需瞬态引擎运行（画布上有交流源或电容即自动运行），静止电路显示 ---。'
+                    : '⚠ 该档位为真机档位（蜂鸣/电容/hFE），本实验台暂未模拟——旋到 DCV/DCA/Ω/ACV/ACA 测量。'}
                   拖动旋钮换档（棘轮定位），点刻度字直接跳档；表笔尖端可拖动、靠近端子自动吸附；开着面板也能继续连线。
                 </p>
                 <button className="wide" onClick={() => setDialFor(null)}>关闭</button>

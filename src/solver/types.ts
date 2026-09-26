@@ -104,9 +104,11 @@ export interface Multimeter extends BaseComp {
 export const V_RANGES = [2.5, 10, 50, 250]
 export const A_RANGES = [0.5, 0.05, 0.005]
 
-/** 万用表当前档位的测量类型（V/A/Ω；占位档返回 null） */
-export function multiKindOf(m: Multimeter['mode']): 'V' | 'A' | 'Ω' | null {
+/** 万用表当前档位的测量类型（V/A/Ω/ACV/ACA；占位档返回 null） */
+export function multiKindOf(m: Multimeter['mode']): 'V' | 'A' | 'Ω' | 'ACV' | 'ACA' | null {
   if (m === 'OHM') return 'Ω'
+  if (m === 'ACV') return 'ACV'
+  if (m === 'ACA') return 'ACA'
   if (m === 'DCV' || m.startsWith('V')) return 'V'
   if (m === 'DCA' || m.startsWith('mA')) return 'A'
   return null
@@ -116,11 +118,13 @@ export function multiKindOf(m: Multimeter['mode']): 'V' | 'A' | 'Ω' | null {
 export function multiRangeOf(m: Multimeter['mode'], stored?: number): number | null {
   switch (m) {
     case 'DCV': return V_RANGES.includes(stored ?? 2.5) ? (stored as number) : 2.5
+    case 'ACV': return 20
     case 'V2.5': return 2.5
     case 'V10': return 10
     case 'V50': return 50
     case 'V250': return 250
     case 'DCA': return A_RANGES.includes(stored ?? 0.5) ? (stored as number) : 0.5
+    case 'ACA': return 10
     case 'mA500': return 0.5
     case 'mA50': return 0.05
     case 'mA5': return 0.005

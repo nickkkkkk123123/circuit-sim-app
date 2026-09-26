@@ -122,4 +122,26 @@ describe('瞬态引擎（电容伴随模型，状态=电荷Q）', () => {
     const u = s.qcap['c1'] / capC(pulled[0] as never)
     expect(u).toBeCloseTo(2, 1)
   })
+
+  it('万用表交流档：ACA 串联读 RMS 电流，ACV 表笔读 RMS 电压（≈ 0.707 × 峰值）', () => {
+    // 交流源 6V 峰值 50Hz + 10Ω 电阻；ACA 表串联在回路里，ACV 表笔吸附在源两端
+    const comps: Comp[] = [
+      { id: 'ac', kind: 'acsource', x: 0, y: 0, rot: 0, e: 6, f: 50, r: 0.5 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+      { id: 'mmA', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'ACA', style: 'digital', pa: '', pb: '' },
+      { id: 'mmV', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'ACV', style: 'digital', pa: 'ac:a', pb: 'ac:b' },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'ac:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'mmA:a' },
+      { id: 'w3', a: 'mmA:b', b: 'ac:b' },
+    ]
+    let st = emptyTransient()
+    const dt = 0.0002
+    for (let i = 0; i < 1500; i++) st = stepTransient({ comps, wires }, st, dt).state // 0.3s ≫ τ=30ms，EMA 已收敛
+    // 峰值电流 = 6 / (10 + 0.01 + 0.5) ≈ 0.5694 → RMS ≈ 0.4026
+    expect(Math.sqrt(st.acAcc['mmA'])).toBeCloseTo(6 / 10.51 / Math.SQRT2, 2)
+    // 源两端电压 = 峰值减内阻压降 → RMS ≈ 0.707 × 6 × 10.01/10.51 ≈ 4.03
+    expect(Math.sqrt(st.acAcc['mmV'])).toBeCloseTo(6 * Math.SQRT1_2 * (10.01 / 10.51), 1)
+  })
 })
