@@ -968,6 +968,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [kinOpen, setKinOpen] = useState(false)
+  const [entryView, setEntryView] = useState<'menu' | 'app'>('menu') // 主界面菜单 → 电学台
   useEffect(() => {
     const mq = window.matchMedia('(pointer: coarse)')
     const onResize = () => {
@@ -1430,6 +1431,21 @@ export default function App() {
     if (c.kind !== 'multimeter' || !c.pa || !c.pb) return null
     if (![c.pa, c.pb].every((t) => s.comps.some((k) => k.id === t.split(':')[0]))) return null
     return (result.nodes?.[c.pa] ?? 0) - (result.nodes?.[c.pb] ?? 0)
+  }
+
+  // 主界面菜单：电学台 / 运动学实验室 两个入口（此处所有 hooks 已执行完，提前返回安全）
+  if (entryView === 'menu') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 26, background: 'var(--panel)' }}>
+        <h1 style={{ fontSize: 44, letterSpacing: 6, color: 'var(--ink)', margin: 0 }}>电学实验室</h1>
+        <p style={{ color: 'var(--muted, #889)', margin: 0 }}>虚拟物理实验台 · MNA 电路求解 + 抛体与碰撞引擎</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: 300, marginTop: 10 }}>
+          <button style={{ fontSize: 18, padding: '14px 0', letterSpacing: 8 }} onClick={() => setEntryView('app')}>开 始</button>
+          <button style={{ fontSize: 18, padding: '14px 0' }} onClick={() => setKinOpen(true)}>运动学实验室 β</button>
+        </div>
+        <p style={{ color: 'var(--muted, #889)', fontSize: 12, margin: 0 }}>16 类电学元件 · 7 组实验预设 · 数字电路 · 万用表 · 抛体与沙盒（测试版）</p>
+      </div>
+    )
   }
 
   return (

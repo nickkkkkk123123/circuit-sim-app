@@ -28,7 +28,7 @@ function SandboxView() {
 
   const SCALE = 18 // px per m
   const W = 42, H = 20 // 场地 m
-  const toPx = (x: number, y: number) => ({ px: 20 + x * SCALE, py: 430 - y * SCALE })
+  const toPx = (x: number, y: number) => ({ px: 20 + x * SCALE, py: 70 + y * SCALE }) // 世界 y 向下为正（与引擎一致），地面=H
 
   useEffect(() => {
     if (!running) return
@@ -87,10 +87,10 @@ function SandboxView() {
           dragRef.current = null
           if (!d) return
           const { wx, wy } = svgPoint(e)
-          const w0x = (d.x - 20) / SCALE, w0y = (430 - d.y) / SCALE
+          const w0x = (d.x - 20) / SCALE, w0y = (d.y - 70) / SCALE
           if (w0x < 0 || w0x > W || w0y < 0 || w0y > H) return
-          // 拖拽向量 → 初速度（屏幕 1m ≙ 3 m/s），松手即发射
-          addBall(w0x, w0y, ((wx - d.x) / SCALE) * 3, -((wy - d.y) / SCALE) * 3)
+          // 拖拽向量 → 初速度（屏幕 1m ≙ 3 m/s，向下拖=向下扔），松手即发射
+          addBall(w0x, w0y, ((wx - d.x) / SCALE) * 3, ((wy - d.y) / SCALE) * 3)
         }}
       >
         <line x1={10} y1={430} x2={790} y2={430} stroke="var(--ink)" strokeWidth={2} />
@@ -102,8 +102,8 @@ function SandboxView() {
         ))}
         {[5, 10, 15].map((m) => (
           <g key={m}>
-            <line x1={16} y1={430 - m * SCALE} x2={24} y2={430 - m * SCALE} stroke="var(--ink)" strokeWidth={1} />
-            <text x={4} y={434 - m * SCALE} fontSize={10} fill="var(--muted, #889)">{m}m</text>
+            <line x1={16} y1={70 + (H - m) * SCALE} x2={24} y2={70 + (H - m) * SCALE} stroke="var(--ink)" strokeWidth={1} />
+            <text x={4} y={74 + (H - m) * SCALE} fontSize={10} fill="var(--muted, #889)">{m}m</text>
           </g>
         ))}
         {trails && balls.map((b) => {
