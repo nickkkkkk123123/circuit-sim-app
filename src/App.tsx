@@ -274,8 +274,8 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
             <line x1={26} y1={0} x2={half + 5} y2={0} stroke={stroke} strokeWidth={2} />
             <line x1={half + 5} y1={0} x2={half + 5} y2={o2} stroke={stroke} strokeWidth={2} />
             <line x1={half + 5} y1={o2} x2={half} y2={o2} stroke={stroke} strokeWidth={2} />
-            {/* 正对区域（半透明） */}
-            {ovH > 0 && <rect x={-half + 2} y={ovTop} width={half * 2 - 4} height={ovH} fill="var(--accent-soft)" opacity={0.15} />}
+            {/* 正对区域（半透明中性色，不随主题强调色变） */}
+            {ovH > 0 && <rect x={-half + 2} y={ovTop} width={half * 2 - 4} height={ovH} fill="rgba(148, 186, 224, 0.28)" stroke="rgba(148, 186, 224, 0.5)" strokeWidth={0.5} />}
             {/* 极板（可拖） */}
             <line x1={-half} y1={o1 - 14} x2={-half} y2={o1 + 14} stroke={stroke} strokeWidth={4.5} strokeLinecap="round" />
             <line x1={half} y1={o2 - 14} x2={half} y2={o2 + 14} stroke={stroke} strokeWidth={4.5} strokeLinecap="round" />
