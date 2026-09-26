@@ -1012,7 +1012,13 @@ export default function App() {
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
 
-  const staticResult = useMemo(() => solve({ comps: s.comps, wires: s.wires }), [s.comps, s.wires])
+  // 状态种子：上次解出的门/继电器状态喂回下次求解（反馈电路=锁存器才有记忆；电路拓扑变了会被迭代自动纠正）
+  const stateHintsRef = useRef<{ gateOut: Record<string, boolean>; relayOn: Record<string, boolean> }>({ gateOut: {}, relayOn: {} })
+  const staticResult = useMemo(() => {
+    const r = solve({ comps: s.comps, wires: s.wires }, stateHintsRef.current)
+    stateHintsRef.current = { gateOut: r.gateOut ?? {}, relayOn: r.relayOn ?? {} }
+    return r
+  }, [s.comps, s.wires])
 
   // 瞬态引擎：画布上有电容或交流源时启动时间步进（rAF 驱动；状态存 ref，不进撤销栈）
   const hasDyn = s.comps.some((c) => c.kind === 'capacitor' || c.kind === 'acsource')

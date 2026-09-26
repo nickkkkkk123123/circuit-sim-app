@@ -1,5 +1,5 @@
 // 实验预设电路包：与 UI 解耦的纯数据，store.loadExperiment 载入时统一重编 id
-import type { Circuit, Wire } from './solver/types'
+import type { Circuit, Comp, Wire } from './solver/types'
 
 export interface Experiment {
   id: string
@@ -321,5 +321,189 @@ export const EXPERIMENTS: Experiment[] = [
         W('w40', 'o1:p', 'rs2:a'), W('w41', 'rs2:b', 'l2:a'),
       ],
     }),
+  },
+  {
+    id: 'sr-latch',
+    group: '数字电路',
+    name: 'SR 锁存器（电路有了记忆）',
+    desc: '两个或非门交叉反馈：按一下 S 灯亮，松手灯还亮着——它记住了一位信息，这是存储器的祖先',
+    detail: '【这个实验在干嘛】\n前面的加法器都是"输入一变输出立刻变"的健忘电路。这个电路不一样：按一下 S（置位），Q 灯亮；松开 S，Q 还亮着——它把"1"记住了。再按一下 R（复位），Q 灭，也记住。这就是锁存器：一位存储单元，内存条的每个格子，往下拆都是它的亿万子孙。\n【电路结构】\n两个或非门交叉反馈：左边门的输出接右边门的输入，右边门的输出又绕回左边门的输入。正是这个"绕回来"制造了记忆：只要两个输出互相撑着，电路就自己锁在当前状态。\n【一步一步做】\n① 闭合 S 再断开：Q 灯亮着不走——记住了\n② 闭合 R 再断开：Q 灯灭，也记住了\n③ S、R 同时闭合：两个灯全灭（输出互相矛盾，都是 0）——这叫"禁止状态"，真实电路里要避免\n【为什么叫 bistable（双稳态）】\n它有两个稳定的姿势：Q=1 或 Q=0，不按开关就永远待在原地。 Feedback（反馈）是关键——这是你第一次在电路里见到"过去影响现在"。\n【冷知识】\n这个电路 1918 年就发明了（爱克尔斯-乔丹触发器），比第一台计算机早 20 多年。',
+    build: () => {
+      const comps: Comp[] = [
+        { id: 'bat', kind: 'battery', x: 100, y: 400, rot: 90, emf: 6, r: 0.5, expanded: false },
+        { id: 'swS', kind: 'switch', x: 150, y: 120, rot: 90, closed: false },
+        { id: 'swR', kind: 'switch', x: 350, y: 120, rot: 90, closed: false },
+        { id: 'gq', kind: 'gate', x: 350, y: 230, rot: 0, type: 'NOR' }, // Q = NOR(R, Q̄)
+        { id: 'gqb', kind: 'gate', x: 150, y: 230, rot: 0, type: 'NOR' }, // Q̄ = NOR(S, Q)
+        { id: 'rsq', kind: 'resistor', x: 490, y: 280, rot: 0, r: 150 },
+        { id: 'rsqb', kind: 'resistor', x: 30, y: 280, rot: 0, r: 150 },
+        { id: 'lq', kind: 'led', x: 580, y: 280, rot: 0 },
+        { id: 'lqb', kind: 'led', x: -60, y: 280, rot: 0 },
+      ]
+      const wires: Wire[] = [
+        W('w01', 'bat:a', 'swS:a'), W('w02', 'bat:a', 'swR:a'),
+        W('w03', 'bat:a', 'gq:c'), W('w04', 'bat:a', 'gqb:c'),
+        W('w05', 'bat:b', 'gq:d'), W('w06', 'bat:b', 'gqb:d'),
+        W('w07', 'bat:b', 'lq:b'), W('w08', 'bat:b', 'lqb:b'),
+        W('w09', 'swS:b', 'gqb:a'),
+        W('w10', 'swR:b', 'gq:a'),
+        W('w11', 'gq:p', 'gqb:b'), // Q 反馈进 Q̄ 门
+        W('w12', 'gqb:p', 'gq:b'), // Q̄ 反馈进 Q 门
+        W('w13', 'gq:p', 'rsq:a'), W('w14', 'rsq:b', 'lq:a'),
+        W('w15', 'gqb:p', 'rsqb:a'), W('w16', 'rsqb:b', 'lqb:a'),
+      ]
+      return { comps, wires }
+    },
+  },
+  {
+    id: 'add4',
+    group: '数字电路',
+    name: '四位加法器（0~15 + 0~15）',
+    desc: '4 个全加器行波进位：拨 8 个开关输入两个二进制数，5 个 LED 直接读出 0~30 的答案',
+    detail: '【这个实验在干嘛】\n把 4 个全加器串成行波进位加法器：低位算完把进位甩给高位。输入 A3A2A1A0 和 B3B2B1B0（各 0~15），输出 5 位二进制和（0~30）。\n【怎么读答案】\nLED 从右到左是 S0、S1、S2、S3（权 1、2、4、8），最上面是进位 C（权 16）。比如 9+14=23=10111：C 亮、S3 灭、S2 亮、S1 亮、S0 亮（16+0+4+2+1）。\n【一步一步做】\n① 先试简单的：A=1（闭合 swA0），B=0 → S0 亮\n② 再试进位穿越：A=1、B=15（swB0~swB3 全闭合）→ 1+15=16=10000：只有 C 亮，S 全灭——进位一路波及到顶\n③ 自己出题验算几个\n【为什么叫"行波"】\n低位的进位要等高位"接住"才能继续算，进位像水波一样从低位涌向高位。这种结构最简单但最慢——CPU 里为了提速发明了"超前进位"，那是另一个故事。\n【规模感】\n这才 4 位。你手机 CPU 一次加 64 位数——同样的结构放大 16 倍，再乘上每秒 30 多亿次。',
+    build: () => {
+      const comps: Comp[] = [{ id: 'bat', kind: 'battery', x: 40, y: 560, rot: 90, emf: 6, r: 0.5, expanded: false }]
+      const wires: Wire[] = []
+      let wn = 0
+      const w = (a: string, b: string) => wires.push(W(`w${++wn}`, a, b))
+      const gate = (id: string, type: 'AND' | 'OR' | 'NAND' | 'NOR' | 'XOR', x: number, y: number) =>
+        comps.push({ id, kind: 'gate', x, y, rot: 0, type })
+      // 4 个全加器逐位搭建：每个全加器 5 个门（x1/x2 异或、a1/a2 与、o1 或）
+      for (let i = 0; i < 4; i++) {
+        const y = 120 + 260 * i
+        const p = (s: string) => `${s}${i}`
+        comps.push({ id: p('swa'), kind: 'switch', x: 130, y, rot: 90, closed: false })
+        comps.push({ id: p('swb'), kind: 'switch', x: 200, y, rot: 90, closed: false })
+        gate(p('x1'), 'XOR', 350, y)
+        gate(p('x2'), 'XOR', 510, y + 45)
+        gate(p('a1'), 'AND', 350, y + 120)
+        gate(p('a2'), 'AND', 510, y + 160)
+        gate(p('o1'), 'OR', 660, y + 160)
+        // 电源轨
+        w('bat:a', p('swa') + ':a'); w('bat:a', p('swb') + ':a')
+        for (const g of [p('x1'), p('x2'), p('a1'), p('a2'), p('o1')]) { w('bat:a', `${g}:c`); w('bat:b', `${g}:d`) }
+        // 输入
+        w(p('swa') + ':b', p('x1') + ':a'); w(p('swa') + ':b', p('a1') + ':a')
+        w(p('swb') + ':b', p('x1') + ':b'); w(p('swb') + ':b', p('a1') + ':b')
+        w(p('x1') + ':p', p('x2') + ':a'); w(p('x1') + ':p', p('a2') + ':a')
+        // 进位输入：第 0 位接地（加 0），其余接低位进位（p('o1')=o1{i}）
+        const cin = i === 0 ? 'bat:b' : `o1${i - 1}:p`
+        w(cin, p('x2') + ':b'); w(cin, p('a2') + ':b')
+        w(p('a1') + ':p', p('o1') + ':a'); w(p('a2') + ':p', p('o1') + ':b')
+        // 和输出
+        comps.push({ id: `rs${i}`, kind: 'resistor', x: 790, y, rot: 0, r: 150 })
+        comps.push({ id: `s${i}`, kind: 'led', x: 880, y, rot: 0 })
+        w(p('x2') + ':p', `rs${i}:a`); w(`rs${i}:b`, `s${i}:a`); w(`s${i}:b`, 'bat:b')
+      }
+      // 最终进位 C4
+      comps.push({ id: 'rsc', kind: 'resistor', x: 790, y: 1050, rot: 0, r: 150 })
+      comps.push({ id: 'c4', kind: 'led', x: 880, y: 1050, rot: 0 })
+      w('o13:p', 'rsc:a'); w('rsc:b', 'c4:a'); w('c4:b', 'bat:b')
+      return { comps, wires }
+    },
+  },
+  {
+    id: 'calc2',
+    group: '数字电路',
+    name: '迷你计算器（加法 + 数码管显示）',
+    desc: '拨开关输入两个 0~3 的数，加法器求和、译码器翻译，七段数码管直接显示十进制答案——计算器的核心三件套',
+    detail: '【这个实验在干嘛】\n这是本项目数字电路的终点站：二进制输入 → 加法器运算 → 译码器翻译 → 七段数码管用十进制显示。真计算器的三大件——输入、运算、显示——全齐了，每一件都是前面预设里的真电路，没有一个假零件。\n【电路结构】\n两位加法器算出 3 位二进制和（0~6），再送进 20 个门组成的译码器：每个译码门盯着"哪几个数字该点亮这条横杠"，把二进制翻成人话。数码管的 7 条发光段就是 7 个 LED。\n【一步一步做】\n① swA0、swB0 闭合（1+1=2）：数码管显示 2\n② 全部闭合（3+3=6）：显示 6——最大容量\n③ 只闭合 swA1、swB0（2+1=3）：显示 3\n④ 挑战：显示 5 该拨哪几个开关？（答案：3+2，即 swA0、swA1、swB1）\n【和真计算器的距离】\n差三样：键盘（按键扫描也是数字电路）、更多位数（同样的加法器堆 8 位 16 位）、乘除法（乘法=移位加，除法=移位减）。结构上没有新东西，只是规模。\n【给评委的一句话】\n从欧姆定律到眼前的数码管，每一毫安电流都由基尔霍夫定律支配——数字世界是模拟世界叠出来的高层建筑。',
+    build: () => {
+      const comps: Comp[] = [{ id: 'bat', kind: 'battery', x: 60, y: 620, rot: 90, emf: 6, r: 0.5, expanded: false }]
+      const wires: Wire[] = []
+      let wn = 0
+      const w = (a: string, b: string) => wires.push(W(`w${++wn}`, a, b))
+      const gate = (id: string, type: 'AND' | 'OR' | 'NAND' | 'NOR' | 'XOR' | 'NOT', x: number, y: number) =>
+        comps.push({ id, kind: 'gate', x, y, rot: 0, type })
+      const led = (id: string, x: number, y: number, rot: 0 | 90) => comps.push({ id, kind: 'led', x, y, rot })
+      // ── 加法器（两位，第 0 位 Cin 接地）──
+      for (let i = 0; i < 2; i++) {
+        const y = 120 + 240 * i
+        const p = (s: string) => `${s}${i}`
+        comps.push({ id: p('swa'), kind: 'switch', x: 130, y, rot: 90, closed: false })
+        comps.push({ id: p('swb'), kind: 'switch', x: 200, y, rot: 90, closed: false })
+        gate(p('x1'), 'XOR', 350, y)
+        gate(p('x2'), 'XOR', 510, y + 40)
+        gate(p('a1'), 'AND', 350, y + 110)
+        gate(p('a2'), 'AND', 510, y + 150)
+        gate(p('o1'), 'OR', 650, y + 150)
+        w('bat:a', p('swa') + ':a'); w('bat:a', p('swb') + ':a')
+        for (const g of [p('x1'), p('x2'), p('a1'), p('a2'), p('o1')]) { w('bat:a', `${g}:c`); w('bat:b', `${g}:d`) }
+        w(p('swa') + ':b', p('x1') + ':a'); w(p('swa') + ':b', p('a1') + ':a')
+        w(p('swb') + ':b', p('x1') + ':b'); w(p('swb') + ':b', p('a1') + ':b')
+        w(p('x1') + ':p', p('x2') + ':a'); w(p('x1') + ':p', p('a2') + ':a')
+        const cin = i === 0 ? 'bat:b' : 'o10:p'
+        w(cin, p('x2') + ':b'); w(cin, p('a2') + ':b')
+        w(p('a1') + ':p', p('o1') + ':a'); w(p('a2') + ':p', p('o1') + ':b')
+      }
+      // 和输出：s0=第 0 位和（p('x2') i=0）、s1=第 1 位和、s2=第 1 位进位（值域 0~6）
+      const s0 = 'x20:p', s1 = 'x21:p', s2 = 'o11:p'
+      // ── 译码器：3 位二进制 → 七段（0~6，7 不可能出现）──
+      // 非门三连
+      gate('n0', 'NOT', 780, 40); gate('n1', 'NOT', 780, 120); gate('n2', 'NOT', 780, 200)
+      w(s0, 'n0:a'); w(s1, 'n1:a'); w(s2, 'n2:a')
+      for (const g of ['n0', 'n1', 'n2']) { w('bat:a', `${g}:c`); w('bat:b', `${g}:d`) }
+      const p0 = 'n0:p', p1 = 'n1:p', p2 = 'n2:p'
+      // 段 a = s1 | s2·s0 | n0·n1·n2（0 也要点亮 a）
+      gate('ga1', 'AND', 780, 280); gate('ga2', 'AND', 780, 360); gate('ga3', 'AND', 780, 440)
+      gate('ga4', 'OR', 900, 280); gate('ga5', 'OR', 930, 200)
+      w(s2, 'ga1:a'); w(s0, 'ga1:b')
+      w(p0, 'ga2:a'); w(p1, 'ga2:b')
+      w('ga2:p', 'ga3:a'); w(p2, 'ga3:b')
+      w(s1, 'ga4:a'); w('ga1:p', 'ga4:b')
+      w('ga4:p', 'ga5:a'); w('ga3:p', 'ga5:b')
+      // 段 b：只在 5（101）和 6（110）灭 → b = NOR( s2·s1·n0, s2·s0·n1 )
+      gate('gb1', 'AND', 780, 520); gate('gb2', 'AND', 780, 600)
+      gate('gb3', 'AND', 780, 680); gate('gb4', 'AND', 780, 760); gate('gb', 'NOR', 780, 840)
+      w(s2, 'gb1:a'); w(s1, 'gb1:b')
+      w('gb1:p', 'gb2:a'); w(p0, 'gb2:b')
+      w(s2, 'gb3:a'); w(s0, 'gb3:b')
+      w('gb3:p', 'gb4:a'); w(p1, 'gb4:b')
+      w('gb2:p', 'gb:a'); w('gb4:p', 'gb:b')
+      // 段 c：只在 2（010）灭 → c = NAND(s1, n0·n2)
+      gate('gc2', 'AND', 780, 760); gate('gc', 'NAND', 780, 840)
+      w(p0, 'gc2:a'); w(p2, 'gc2:b')
+      w(s1, 'gc:a'); w('gc2:p', 'gc:b')
+      // 段 d：灭在 1（001）和 4（100）→ d = n0·n2 | s1·s0 | s2·(s1|s0)
+      gate('gd1', 'AND', 900, 40); gate('gd2', 'AND', 900, 120); gate('gd3', 'OR', 900, 200)
+      gate('gd6', 'AND', 900, 280); gate('gd4', 'OR', 900, 360); gate('gd5', 'OR', 900, 440)
+      w(p0, 'gd1:a'); w(p2, 'gd1:b')
+      w(s1, 'gd2:a'); w(s0, 'gd2:b')
+      w(s1, 'gd3:a'); w(s0, 'gd3:b')
+      w(s2, 'gd6:a'); w('gd3:p', 'gd6:b')
+      w('gd1:p', 'gd4:a'); w('gd2:p', 'gd4:b')
+      w('gd4:p', 'gd5:a'); w('gd6:p', 'gd5:b')
+      // 段 e = n0·(n2 | s1)
+      gate('ge1', 'OR', 900, 520); gate('ge2', 'AND', 900, 600)
+      w(p2, 'ge1:a'); w(s1, 'ge1:b')
+      w(p0, 'ge2:a'); w('ge1:p', 'ge2:b')
+      // 段 f：灭在 1/2/3 → f = n1·(n0|s2) | s2·s1
+      gate('gf1', 'OR', 1000, 40); gate('gf2', 'AND', 1000, 120)
+      gate('gf3', 'AND', 1000, 200); gate('gf', 'OR', 1000, 280)
+      w(p0, 'gf1:a'); w(s2, 'gf1:b')
+      w(p1, 'gf2:a'); w('gf1:p', 'gf2:b')
+      w(s2, 'gf3:a'); w(s1, 'gf3:b')
+      w('gf2:p', 'gf:a'); w('gf3:p', 'gf:b')
+      // 段 g = s1 | s2
+      gate('gg', 'OR', 1000, 200); w(s1, 'gg:a'); w(s2, 'gg:b')
+      // 所有译码门接电源
+      for (const g of ['ga1', 'ga2', 'ga3', 'ga4', 'ga5', 'gb1', 'gb2', 'gb3', 'gb4', 'gb', 'gc2', 'gc', 'gd1', 'gd2', 'gd3', 'gd6', 'gd4', 'gd5', 'ge1', 'ge2', 'gf1', 'gf2', 'gf3', 'gf', 'gg']) {
+        w('bat:a', `${g}:c`); w('bat:b', `${g}:d`)
+      }
+      // ── 七段数码管（7 个 LED 布成日字形，串 150Ω 限流）──
+      const seg = (id: string, out: string, x: number, y: number, rot: 0 | 90) => {
+        comps.push({ id: `r${id}`, kind: 'resistor', x: x - 70, y, rot: 0, r: 150 })
+        led(id, x, y, rot)
+        w(out, `r${id}:a`); w(`r${id}:b`, `${id}:a`); w(`${id}:b`, 'bat:b')
+      }
+      seg('segA', 'ga5:p', 1130, 110, 0)
+      seg('segB', 'gb:p', 1200, 170, 90)
+      seg('segC', 'gc:p', 1200, 310, 90)
+      seg('segD', 'gd5:p', 1130, 370, 0)
+      seg('segE', 'ge2:p', 1060, 310, 90)
+      seg('segF', 'gf:p', 1060, 170, 90)
+      seg('segG', 'gg:p', 1130, 240, 0)
+      return { comps, wires }
+    },
   },
 ]

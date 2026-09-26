@@ -161,4 +161,60 @@ describe('数字电路预设（加法器全家）', () => {
     expect(lit(r3, 'l0')).toBe(true)
     expect(lit(r3, 'l2')).toBe(false)
   })
+
+  it('SR 锁存器：置位→松手保持→复位', () => {
+    const rSet = solve(presetOf('sr-latch', ['swS']))
+    expect(lit(rSet, 'lq')).toBe(true)
+    expect(lit(rSet, 'lqb')).toBe(false)
+    // 松开 S：以上一轮门状态热启动 → Q 保持（记忆）
+    const rHold = solve(presetOf('sr-latch', []), { gateOut: rSet.gateOut })
+    expect(lit(rHold, 'lq')).toBe(true)
+    expect(lit(rHold, 'lqb')).toBe(false)
+    // 复位
+    const rReset = solve(presetOf('sr-latch', ['swR']), { gateOut: rHold.gateOut })
+    expect(lit(rReset, 'lq')).toBe(false)
+    expect(lit(rReset, 'lqb')).toBe(true)
+  })
+
+  it('四位加法器：1+15=16（仅进位亮），9+14=23=10111', () => {
+    const r1 = solve(presetOf('add4', ['swa0']))
+    expect(lit(r1, 's0')).toBe(true)
+    expect(lit(r1, 'c4')).toBe(false)
+    const r16 = solve(presetOf('add4', ['swa0', 'swb0', 'swb1', 'swb2', 'swb3']))
+    expect(lit(r16, 'c4')).toBe(true)
+    for (const s of ['s0', 's1', 's2', 's3']) expect(lit(r16, s)).toBe(false)
+    const r23 = solve(presetOf('add4', ['swa0', 'swa3', 'swb1', 'swb2', 'swb3']))
+    expect(lit(r23, 'c4')).toBe(true)
+    expect(lit(r23, 's3')).toBe(false)
+    expect(lit(r23, 's2')).toBe(true)
+    expect(lit(r23, 's1')).toBe(true)
+    expect(lit(r23, 's0')).toBe(true)
+  })
+
+  it('迷你计算器：和 0~6 七段数码管逐位全验', () => {
+    const DIGIT_SEGS: Record<number, string[]> = {
+      0: ['A', 'B', 'C', 'D', 'E', 'F'],
+      1: ['B', 'C'],
+      2: ['A', 'B', 'D', 'E', 'G'],
+      3: ['A', 'B', 'C', 'D', 'G'],
+      4: ['B', 'C', 'F', 'G'],
+      5: ['A', 'C', 'D', 'F', 'G'],
+      6: ['A', 'C', 'D', 'E', 'F', 'G'],
+    }
+    const SWITCHES: Record<number, string[]> = {
+      0: [],
+      1: ['swa0'],
+      2: ['swa1'],
+      3: ['swa1', 'swa0'],
+      4: ['swa1', 'swb1'],
+      5: ['swa1', 'swa0', 'swb1'],
+      6: ['swa0', 'swa1', 'swb0', 'swb1'],
+    }
+    for (const n of [0, 1, 2, 3, 4, 5, 6]) {
+      const r = solve(presetOf('calc2', SWITCHES[n]))
+      for (const seg of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
+        expect(lit(r, `seg${seg}`), `数字 ${n} 的段 ${seg}`).toBe(DIGIT_SEGS[n].includes(seg))
+      }
+    }
+  })
 })

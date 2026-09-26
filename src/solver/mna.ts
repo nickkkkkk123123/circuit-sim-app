@@ -68,7 +68,13 @@ function solveGauss(G: number[][], I: number[]): number[] {
   return V
 }
 
-export function solve(circuit: Circuit): SolveResult {
+// 热启动种子：上一次求解的状态（门输出/继电器/LED），反馈电路（锁存器）靠它记住历史
+export interface SolveHints {
+  gateOut?: Record<string, boolean>
+  relayOn?: Record<string, boolean>
+}
+
+export function solve(circuit: Circuit, hints?: SolveHints): SolveResult {
   const { comps, wires } = circuit
   const { nodeIds } = buildNodes(circuit)
   // 端子 id 即节点 id（导线已是真实支路，不再需要并查集）
@@ -85,8 +91,8 @@ export function solve(circuit: Circuit): SolveResult {
   // 继电器吸合状态 / 逻辑门输出状态（与 LED 同族的状态迭代）
   const relays = comps.filter((c) => c.kind === 'relay')
   const gates = comps.filter((c) => c.kind === 'gate')
-  const relayOn = new Map<string, boolean>(relays.map((r) => [r.id, false]))
-  const gateOut = new Map<string, boolean>(gates.map((g) => [g.id, false]))
+  const relayOn = new Map<string, boolean>(relays.map((r) => [r.id, !!hints?.relayOn?.[r.id]]))
+  const gateOut = new Map<string, boolean>(gates.map((g) => [g.id, !!hints?.gateOut?.[g.id]]))
 
   const gAddM = (G: number[][], na: string, nb: string, g: number) => {
     const a = idx.get(na)!
