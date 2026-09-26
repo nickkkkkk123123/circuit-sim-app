@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'spdt' | 'led'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led'
 
 export interface BaseComp {
   id: string
@@ -87,6 +87,11 @@ export interface Ohmmeter extends BaseComp {
   // 欧姆表：读数 = 零源辅助解中两端间等效电阻；主解中呈高阻开路
 }
 
+export interface Multimeter extends BaseComp {
+  kind: 'multimeter'
+  mode: 'V' | 'A' | 'Ω' // 数字万用表三档：V=直流电压（并联跨接，内阻 10MΩ）、A=直流电流（串联，内阻 0.01Ω）、Ω=电阻（断电测，读戴维南电阻）
+}
+
 export interface Spdt extends BaseComp {
   kind: 'spdt'
   pos: 1 | 2 | 0 // 单刀双掷（ON-OFF-ON）：1=接通触点1，2=接通触点2，0=中间位断开
@@ -107,7 +112,7 @@ export const LED_I_FULL = 0.02
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Spdt | Diode
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -140,6 +145,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   ammeter: 24,
   galvanometer: 24,
   ohmmeter: 24,
+  multimeter: 26,
   spdt: 28,
   led: 24,
 }
@@ -209,6 +215,8 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0 }
     case 'ohmmeter':
       return { id, kind, x, y, rot: 0 }
+    case 'multimeter':
+      return { id, kind, x, y, rot: 0, mode: 'V' }
     case 'spdt':
       return { id, kind, x, y, rot: 0, pos: 1 }
     case 'led':

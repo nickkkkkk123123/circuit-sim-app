@@ -5,7 +5,7 @@ import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf } fro
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'led'
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'led'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -214,6 +214,12 @@ export function solve(circuit: Circuit): SolveResult {
         // 欧姆表在主解中=高阻开路（不干扰电路）；读数走零源辅助求解
         addRes(c.id, 'ohmmeter', na, nb, 1e9)
         break
+      case 'multimeter': {
+        // 数字万用表：V 档=高内阻并联跨接；A 档=低内阻串联；Ω 档=主解开路（读数走零源辅助解）
+        const r = c.mode === 'V' ? 1e7 : c.mode === 'A' ? 0.01 : 1e9
+        addRes(c.id, 'multimeter', na, nb, r)
+        break
+      }
       case 'spdt': {
         // 单刀双掷：公共端 a 与触点 b/p 之间一通一断
         const nb1 = find(`${c.id}:b`)
@@ -309,7 +315,7 @@ export function solve(circuit: Circuit): SolveResult {
 
   // 欧姆表零源辅助求解：电池电动势置零（退化为内阻）、欧姆表本体开路，
   // 向表笔注入 1A 测试电流 → 两端电压差 = 看进去的等效电阻（戴维南电阻）
-  const ohms = comps.filter((c) => c.kind === 'ohmmeter')
+  const ohms = comps.filter((c) => c.kind === 'ohmmeter' || (c.kind === 'multimeter' && c.mode === 'Ω'))
   let ohm: Record<string, number> | undefined
   if (ohms.length) {
     ohm = {}

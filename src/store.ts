@@ -42,7 +42,7 @@ interface EditorState extends Circuit {
   remove: (id: string) => void
   toggleSwitch: (id: string) => void
   setExpanded: (id: string, expanded: boolean) => boolean
-  updateParam: (id: string, key: string, value: number | boolean | MeterPosts) => void
+  updateParam: (id: string, key: string, value: number | boolean | string | MeterPosts) => void
   select: (id: string | null) => void
   selectWire: (id: string | null) => void
   removeWire: (id: string) => void

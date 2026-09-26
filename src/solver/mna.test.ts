@@ -410,4 +410,75 @@ describe('MNA 求解器', () => {
     const r = solve({ comps, wires })
     expect(r.byComp['d1'].current).toBeCloseTo(0, 6)
   })
+
+  // 万用表：V 档高内阻并联 / A 档低内阻串联 / Ω 档主解开路 + 零源辅助解
+  describe('万用表', () => {
+    const base = () => [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.1 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ] as Comp[]
+
+    it('V 档：跨接电阻两端读出端电压（5.94V），几乎不影响电路', () => {
+      const comps: Comp[] = [
+        ...base(),
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'V' },
+      ]
+      const wires: Wire[] = [
+        { id: 'w1', a: 'b1:a', b: 'r1:a' },
+        { id: 'w2', a: 'r1:a', b: 'm1:a' },
+        { id: 'w3', a: 'm1:b', b: 'r1:b' },
+        { id: 'w4', a: 'r1:b', b: 'b1:b' },
+      ]
+      const r = solve({ comps, wires })
+      expect(Math.abs(r.byComp['m1'].dv)).toBeCloseTo(6 * 10 / 10.1, 2)
+      // 10MΩ 内阻 → 电流几乎全部走 r1
+      expect(r.byComp['m1'].current).toBeLessThan(1e-5)
+    })
+
+    it('A 档：串联接入支路，读数 = 支路电流', () => {
+      const comps: Comp[] = [
+        ...base(),
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'A' },
+      ]
+      const wires: Wire[] = [
+        { id: 'w1', a: 'b1:a', b: 'r1:a' },
+        { id: 'w2', a: 'r1:b', b: 'm1:a' },
+        { id: 'w3', a: 'm1:b', b: 'b1:b' },
+      ]
+      const r = solve({ comps, wires })
+      // 6 / (0.1 + 0.01 + 10 + 导线) ≈ 0.59A
+      expect(r.byComp['m1'].current).toBeCloseTo(0.59, 1)
+      expect(r.byComp['r1'].current).toBeCloseTo(r.byComp['m1'].current, 3)
+    })
+
+    it('Ω 档：无源电路跨接电阻 → 读数 = 该电阻阻值；主解不影响电路', () => {
+      const comps: Comp[] = [
+        { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'Ω' },
+      ]
+      const wires: Wire[] = [
+        { id: 'w1', a: 'm1:a', b: 'r1:a' },
+        { id: 'w2', a: 'm1:b', b: 'r1:b' },
+      ]
+      const r = solve({ comps, wires })
+      expect(r.ohm?.['m1']).toBeCloseTo(10, 2)
+      expect(r.byComp['m1'].current).toBeCloseTo(0, 6) // 主解中开路
+    })
+
+    it('Ω 档带电电路：读数 = 戴维南等效电阻（r1 ∥ 电源内阻）', () => {
+      const comps: Comp[] = [
+        ...base(),
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'Ω' },
+      ]
+      const wires: Wire[] = [
+        { id: 'w1', a: 'b1:a', b: 'r1:a' },
+        { id: 'w2', a: 'r1:a', b: 'm1:a' },
+        { id: 'w3', a: 'm1:b', b: 'r1:b' },
+        { id: 'w4', a: 'r1:b', b: 'b1:b' },
+      ]
+      const r = solve({ comps, wires })
+      // 戴维南 = 两根表笔线 0.002×2 + r1 ∥ (电源内阻0.1 + 两根主回路线0.004) = 0.004 + 10∥0.104 ≈ 0.107
+      expect(r.ohm?.['m1']).toBeCloseTo(0.004 + 10 * 0.104 / 10.104, 3)
+    })
+  })
 })

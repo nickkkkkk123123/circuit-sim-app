@@ -25,6 +25,7 @@ const KIND_NAME: Record<CompKind, string> = {
   ammeter: '电流表',
   galvanometer: '灵敏电流计',
   ohmmeter: '欧姆表',
+  multimeter: '万用表',
   spdt: '单刀双掷开关',
   led: '二极管',
   bulb: '小灯泡',
@@ -66,6 +67,14 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   const galvoPegged = isGalvo && Math.abs(galvoI) > METER_G_IG
   const isOhm = c.kind === 'ohmmeter'
   const ohmR = isOhm ? (ohmReading ?? Infinity) : 0
+  const isMulti = c.kind === 'multimeter'
+  // 数字万用表：LCD 读数（V 带符号 / A 带符号 / Ω 走零源辅助解），超量程显示 OL
+  const multiLcd = isMulti ? (() => {
+    if (c.mode === 'Ω') return fmtOhm(ohmReading ?? Infinity)
+    if (c.mode === 'V') return Math.abs(solved?.dv ?? 0) > 20 ? 'OL' : (solved?.dv ?? 0).toFixed(2)
+    const i = (solved?.dv ?? 0) / 0.01
+    return Math.abs(i) > 10 ? 'OL' : i.toFixed(3)
+  })() : ''
   const isLed = c.kind === 'led'
   const ledLit = isLed && (solved?.current ?? 0) > 0.002
   const ledFrac = ledLit ? Math.min(1, (solved!.current ?? 0) / LED_I_FULL) : 0
@@ -130,6 +139,29 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
             </text>
             <circle r={20} fill="none" stroke={stroke} strokeWidth={2.5} />
             <text x={0} y={8} textAnchor="middle" fontSize={20} fontWeight={700} fill={stroke}>Ω</text>
+          </>
+        )
+      })()}
+      {isMulti && (() => {
+        // 数字万用表：矩形机身 + LCD 屏（读数即屏显），点击读数开面板换挡
+        const mode = c.mode
+        return (
+          <>
+            <text
+              x={0} y={-30} textAnchor="middle" fontSize={13} fontWeight={600}
+              fill={T.readout}
+              style={{ cursor: 'pointer' }}
+              onPointerDown={(e) => { e.stopPropagation(); onDialOpen?.(c) }}
+            >
+              {multiLcd}{mode === 'Ω' ? '' : mode}
+              <title>点击打开万用表面板（换挡 V/A/Ω）</title>
+            </text>
+            <rect x={-24} y={-16} width={48} height={32} rx={5} fill="#f7f8fa" stroke={stroke} strokeWidth={2.5} />
+            <rect x={-18} y={-11} width={26} height={14} rx={2} fill="#d8e4d0" stroke="#55617e" strokeWidth={1} />
+            <text x={-5} y={-0.5} textAnchor="middle" fontSize={10} fontWeight={700} fill="#2a3140">{multiLcd}</text>
+            <text x={13} y={-1} textAnchor="middle" fontSize={11} fontWeight={700} fill="#2a3140">{mode}</text>
+            <text x={-16} y={12} fontSize={8} fill="#55617e">COM</text>
+            <text x={4} y={12} fontSize={8} fill="#55617e">VΩA</text>
           </>
         )
       })()}
@@ -316,6 +348,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     : isMeter ? (meterRangeOf(c) === null ? '⚠ 表笔未接好' : `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`)
     : isLed ? (ledLit ? `导通 · ${((solved?.current ?? 0) * 1000).toFixed(0)}mA` : '截止')
     : isOhm ? '断电测电阻'
+    : isMulti ? (multiLcd === 'OL' ? '⚠ 超量程，换档位更大的测量对象' : c.mode === 'V' ? 'V 档 · 并联测压' : c.mode === 'A' ? 'A 档 · 串联测流' : 'Ω 档 · 断电测电阻')
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
     : c.kind === 'spdt' ? (c.pos === 0 ? '断开（中位）' : `公共端接 触点${c.pos}`)
     : c.kind === 'rheostat' ? (c.expanded
@@ -323,9 +356,9 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         : rheoLabel ?? `P ${Math.round(c.pos * 100)}% · Rmax ${c.Rmax}Ω`)
     : c.closed ? '闭合' : '断开'
   const readout =
-    !isMeter && !isGalvo && !isOhm && !isLed && solved && solved.current > 1e-6
+    !isMeter && !isGalvo && !isOhm && !isMulti && !isLed && solved && solved.current > 1e-6
       ? `I=${solved.current.toFixed(3)}A · P=${solved.power.toFixed(2)}W`
-      : solved && !isMeter && !isGalvo && !isOhm && !isLed ? '无电流' : ''
+      : solved && !isMeter && !isGalvo && !isOhm && !isMulti && !isLed ? '无电流' : ''
   return (
     <g transform={`translate(${c.x} ${c.y}) rotate(${c.rot})`}>
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
@@ -433,10 +466,10 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
         <line x1={0} y1={-12} x2={0} y2={2} {...st} />
         <polygon points="0,4 -4,-3 4,-3" {...dot} />
       </>)}
-      {(kind === 'voltmeter' || kind === 'ammeter' || kind === 'ohmmeter' || kind === 'galvanometer') && (<>
+      {(kind === 'voltmeter' || kind === 'ammeter' || kind === 'ohmmeter' || kind === 'galvanometer' || kind === 'multimeter') && (<>
         <circle r={13} {...st} />
         <text x={0} y={5} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--ink)">
-          {kind === 'voltmeter' ? 'V' : kind === 'ammeter' ? 'A' : kind === 'ohmmeter' ? 'Ω' : 'G'}
+          {kind === 'voltmeter' ? 'V' : kind === 'ammeter' ? 'A' : kind === 'ohmmeter' ? 'Ω' : kind === 'multimeter' ? 'M' : 'G'}
         </text>
       </>)}
       {kind === 'spdt' && (<>
@@ -801,6 +834,7 @@ export default function App() {
     { kind: 'ammeter', label: '电流表' },
     { kind: 'galvanometer', label: '灵敏电流计' },
     { kind: 'ohmmeter', label: '欧姆表' },
+    { kind: 'multimeter', label: '万用表' },
     { kind: 'spdt', label: '单刀双掷' },
     { kind: 'led', label: '二极管' },
     { kind: 'bulb', label: '小灯泡' },
@@ -1156,6 +1190,30 @@ export default function App() {
                 </p>
               )
             })()}
+            {selected.kind === 'multimeter' && (() => {
+              const btn = (m: 'V' | 'A' | 'Ω', text: string) => (
+                <button className="wide" disabled={selected.mode === m}
+                  onClick={() => s.updateParam(selected.id, 'mode', m)}>
+                  {text}{selected.mode === m ? '（当前档位）' : ''}
+                </button>
+              )
+              const live = s.comps.some((k) => k.kind === 'battery' && k.emf > 0)
+              return (
+                <>
+                  {btn('V', 'V 档（直流电压）')}
+                  {btn('A', 'A 档（直流电流）')}
+                  {btn('Ω', 'Ω 档（电阻）')}
+                  <p className="warn" style={{ margin: 0 }}>
+                    {selected.mode === 'V'
+                      ? '两表笔跨接（并联）在被测元件两端，红笔接高电位；显示负值 = 接反了，不影响读数。'
+                      : selected.mode === 'A'
+                      ? '断开一处把表串进支路（串联）；内阻 0.01Ω 接近理想。超 10A 显示 OL。'
+                      : '断电测电阻：读数 = 两端间等效电阻（电源置零）。' + (live ? '⚠ 电路带电——测单个元件请断开一端。' : '可跨接在元件两端直接测量。')}
+                    点击画布上的读数可打开万用表面板。
+                  </p>
+                </>
+              )
+            })()}
             {selected.kind === 'galvanometer' && (() => {
               const iSigned = (selResult?.dv ?? 0) / METER_G_R
               const mA = Math.abs(iSigned) * 1000
@@ -1227,7 +1285,65 @@ export default function App() {
       {dialFor && (() => {
         // 表盘读数练习弹窗：复刻学生实验电表——双排刻度（上=大量程，下=小量程）、30 小格
         // 灵敏电流计为特例：中心零位 ±1mA 双向刻度；欧姆表为特例：非线性反向刻度（0 在右，∞ 在左）
+        // 万用表为特例：数字表，LCD 读数 + 三档换挡按钮
         const c = s.comps.find((k) => k.id === dialFor)
+        if (c && c.kind === 'multimeter') {
+          const mode = c.mode
+          const live = s.comps.some((k) => k.kind === 'battery' && k.emf > 0)
+          const solvedM = result.byComp[c.id]
+          const v = mode === 'V' ? (solvedM?.dv ?? 0) : mode === 'A' ? (solvedM?.dv ?? 0) / 0.01 : (result.ohm?.[c.id] ?? Infinity)
+          const ol = (mode === 'V' && Math.abs(v) > 20) || (mode === 'A' && Math.abs(v) > 10)
+          const disp = mode === 'Ω' ? fmtOhm(v) : ol ? 'OL' : v.toFixed(mode === 'V' ? 2 : 3)
+          const mbtn = (m: 'V' | 'A' | 'Ω', text: string) => (
+            <button className="wide" disabled={mode === m} onClick={() => s.updateParam(c.id, 'mode', m)}>
+              {text}{mode === m ? '（当前档位）' : ''}
+            </button>
+          )
+          return (
+            <div className="dial-float" style={dialPos ? { left: dialPos.x, top: dialPos.y, right: 'auto' } : undefined}>
+              <div
+                className="dial-head"
+                onPointerDown={(e) => {
+                  if ((e.target as HTMLElement).closest('button')) return
+                  const el = e.currentTarget.parentElement as HTMLElement
+                  const r = el.getBoundingClientRect()
+                  dialDragRef.current = { ox: e.clientX - r.left, oy: e.clientY - r.top }
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                }}
+                onPointerMove={(e) => {
+                  if (!dialDragRef.current) return
+                  setDialPos({
+                    x: Math.max(0, Math.min(e.clientX - dialDragRef.current.ox, window.innerWidth - 220)),
+                    y: Math.max(0, Math.min(e.clientY - dialDragRef.current.oy, window.innerHeight - 60)),
+                  })
+                }}
+                onPointerUp={() => { dialDragRef.current = null }}
+              >
+                <h3>万用表 · 数字表（V/A/Ω 三档）</h3>
+                <button className="icon-btn" title="关闭" onClick={() => setDialFor(null)}>×</button>
+              </div>
+              <div className="dial-body">
+                <div className="dial-val" style={{ fontSize: 30, fontFamily: 'monospace' }}>
+                  {disp}{mode === 'Ω' ? '' : mode}
+                </div>
+                {mbtn('V', 'V 档（直流电压）')}
+                {mbtn('A', 'A 档（直流电流）')}
+                {mbtn('Ω', 'Ω 档（电阻）')}
+                <p className="dial-hint">
+                  {mode === 'V'
+                    ? '并联跨接在元件两端，红笔接高电位；显示负值 = 表笔接反（不影响读数）。超 20V 显示 OL。'
+                    : mode === 'A'
+                    ? '断开一处把表串进支路（串联）。内阻 0.01Ω 接近理想；超 10A 显示 OL。'
+                    : '断电测电阻：读数 = 两端间等效电阻（所有电源置零）。'
+                    + (live ? '⚠ 电路带电——测单个元件请断开一端。' : '可跨接在元件两端直接测量。')
+                    + (v >= 1e7 ? ' 当前两端断路（∞）。' : '')}
+                  开着面板也能继续连线、切换档位。
+                </p>
+                <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
+              </div>
+            </div>
+          )
+        }
         if (!c || (c.kind !== 'voltmeter' && c.kind !== 'ammeter' && c.kind !== 'galvanometer' && c.kind !== 'ohmmeter') || (c.kind !== 'galvanometer' && c.kind !== 'ohmmeter' && c.customRange)) return null
         const isV = c.kind === 'voltmeter'
         const isG = c.kind === 'galvanometer'
