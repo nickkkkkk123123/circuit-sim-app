@@ -63,7 +63,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, probeTips, probeDragTip, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown, onProbePointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -73,8 +73,12 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onDialOpen?: (c: Comp) => void
   onPlatePointerDown?: (e: React.PointerEvent, c: Comp, which: 1 | 2) => void
+  onProbePointerDown?: (e: React.PointerEvent, c: Comp, lead: 'A' | 'B') => void
   ohmReading?: number
   rheoLabel?: string
+  probeDv?: number | null // 表笔吸附时的电压读数（红笔端 − 黑笔端）
+  probeTips?: { a: { x: number; y: number }; b: { x: number; y: number } }
+  probeDragTip?: { lead: 'A' | 'B'; x: number; y: number }
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -93,7 +97,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     if (!kind) return '' // OFF / 未模拟档：LCD 熄灭
     const range = multiRangeOf(c.mode, c.range)
     if (kind === 'V') {
-      const v = solved?.dv ?? 0
+      const v = probeDv !== null && probeDv !== undefined ? probeDv : (solved?.dv ?? 0)
       return Math.abs(v) > (c.style === 'classic' ? (range ?? 2.5) : 20) ? 'OL' : v.toFixed(2)
     }
     if (kind === 'A') {
@@ -180,7 +184,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         const rEff = kind === 'V'
           ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
           : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
-        const sVal = !kind || isO ? 0 : kind === 'V' ? (solved?.dv ?? 0) : (solved?.dv ?? 0) / rEff
+        const sVal = !kind || isO ? 0 : kind === 'V' ? (probeDv != null ? probeDv : (solved?.dv ?? 0)) : (solved?.dv ?? 0) / rEff
         const val = isO ? (ohmReading ?? Infinity) : Math.abs(sVal)
         const frac = Math.max(-0.14, Math.min(1.12, isO ? 10 / (10 + val) : range ? sVal / range : 0))
         const nAng = ((-50 + 100 * frac) * Math.PI) / 180
@@ -532,6 +536,28 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
           </text>
         )}
       </g>
+      {/* 常驻表笔（仅万用表）：黑/红两根，尖端拖到端子附近自动吸附 */}
+      {probeTips && (['A', 'B'] as const).map((lead) => {
+        const dragging = probeDragTip?.lead === lead
+        const tip = dragging && probeDragTip ? { x: probeDragTip.x, y: probeDragTip.y } : probeTips[lead === 'A' ? 'a' : 'b']
+        const lx = tip.x - c.x
+        const ly = tip.y - c.y
+        const ax = lead === 'A' ? -48 : 48
+        const ay = 10
+        const col = lead === 'A' ? '#3a3f4c' : '#d84a4a'
+        const mx = (ax + lx) / 2
+        const my = Math.max(ay, ly) + 26
+        return (
+          <g key={'probe' + lead}>
+            <path d={`M ${ax} ${ay} Q ${mx} ${my} ${lx} ${ly}`} fill="none" stroke={col} strokeWidth={2} strokeLinecap="round" />
+            <circle cx={lx} cy={ly} r={4.5} fill={col} stroke="#f2f4f8" strokeWidth={1.2} />
+            {!dragging && (
+              <circle cx={lx} cy={ly} r={10} fill="transparent" style={{ cursor: 'grab' }}
+                onPointerDown={(e) => { e.stopPropagation(); onProbePointerDown?.(e, c, lead) }} />
+            )}
+          </g>
+        )
+      })}
     </g>
   )
 }
@@ -746,6 +772,57 @@ export default function App() {
     setCapDrag({ id: c.id, which, sx: e.clientX, sy: e.clientY, d0: cap.d ?? 10, o0: (which === 1 ? cap.o1 : cap.o2) ?? 0 })
     s.select(c.id)
   }
+  // 万用表表笔拖拽：尖端跟随指针，松手吸附 40 单位内最近端子；空白处松手 = 表笔脱离
+  const [probeDrag, setProbeDrag] = useState<{ id: string; lead: 'A' | 'B'; x: number; y: number } | null>(null)
+  const probeTipWorld = (c: Comp, lead: 'A' | 'B'): { x: number; y: number } => {
+    const term = lead === 'A' ? (c as { pa?: string }).pa : (c as { pb?: string }).pb
+    if (term) {
+      const target = s.comps.find((k) => k.id === term.split(':')[0])
+      if (target) return terminalPos(target, term.split(':')[1] as 'a' | 'b')
+    }
+    return { x: c.x + (lead === 'A' ? -52 : 52), y: c.y + 26 }
+  }
+  const onProbePointerDown = (e: React.PointerEvent, c: Comp, lead: 'A' | 'B') => {
+    if (s.pendingFrom || s.tool !== 'select') return
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const tip = probeTipWorld(c, lead)
+    setProbeDrag({ id: c.id, lead, x: tip.x, y: tip.y })
+    s.select(c.id)
+  }
+  useEffect(() => {
+    if (!probeDrag) return
+    const toWorld = (ev: PointerEvent) => {
+      const el = gRef.current ?? svgRef.current
+      const ctm = el?.getScreenCTM()
+      if (!ctm) return null
+      return new DOMPoint(ev.clientX, ev.clientY).matrixTransform(ctm.inverse())
+    }
+    const move = (ev: PointerEvent) => {
+      const p = toWorld(ev)
+      if (p) setProbeDrag((d) => (d ? { ...d, x: p.x, y: p.y } : d))
+    }
+    const up = (ev: PointerEvent) => {
+      const st = editorState()
+      const p = toWorld(ev)
+      if (p) {
+        let best: { term: string; d: number } | null = null
+        for (const k of st.comps) {
+          for (const t of terminalsOf(k)) {
+            const tp = terminalPos(k, t)
+            const dd = Math.hypot(tp.x - p.x, tp.y - p.y)
+            if (dd < 40 && (!best || dd < best.d)) best = { term: `${k.id}:${t}`, d: dd }
+          }
+        }
+        const key = probeDrag.lead === 'A' ? 'pa' : 'pb'
+        st.updateParam(probeDrag.id, key, best ? best.term : '')
+      }
+      setProbeDrag(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+  }, [probeDrag])
   const [switchPress, setSwitchPress] = useState<{ id: string; x0: number; y0: number; dx: number; dy: number; moved: boolean } | null>(null)
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
@@ -1135,6 +1212,26 @@ export default function App() {
   const selected = s.comps.find((c) => c.id === s.selectedId) ?? null
   const selResult = s.selectedId ? result.byComp[s.selectedId] : undefined
 
+  // 万用表表笔：尖端世界坐标（吸附端子/拖动中/默认休息位）与表笔电压读数
+  const multiProbeTips = (c: Comp) => {
+    if (c.kind !== 'multimeter') return undefined
+    const tip = (lead: 'A' | 'B'): { x: number; y: number } => {
+      if (probeDrag && probeDrag.id === c.id && probeDrag.lead === lead) return { x: probeDrag.x, y: probeDrag.y }
+      const term = lead === 'A' ? c.pa : c.pb
+      if (term) {
+        const target = s.comps.find((k) => k.id === term.split(':')[0])
+        if (target) return terminalPos(target, term.split(':')[1] as 'a' | 'b')
+      }
+      return { x: c.x + (lead === 'A' ? -52 : 52), y: c.y + 26 }
+    }
+    return { a: tip('A'), b: tip('B') }
+  }
+  const multiProbeDv = (c: Comp): number | null => {
+    if (c.kind !== 'multimeter' || !c.pa || !c.pb) return null
+    if (![c.pa, c.pb].every((t) => s.comps.some((k) => k.id === t.split(':')[0]))) return null
+    return (result.nodes?.[c.pa] ?? 0) - (result.nodes?.[c.pb] ?? 0)
+  }
+
   return (
     <div className="app">
       {!sbCollapsed && <div className="grip" onPointerDown={gripDown} />}
@@ -1333,6 +1430,10 @@ export default function App() {
                 onSwitchPointerDown={onSwitchPointerDown}
                 onDialOpen={(c) => { setDialFor(c.id); setDialPos(null) }}
                 onPlatePointerDown={onPlatePointerDown}
+                onProbePointerDown={onProbePointerDown}
+                probeDv={multiProbeDv(c)}
+                probeTips={multiProbeTips(c)}
+                probeDragTip={probeDrag && probeDrag.id === c.id ? { lead: probeDrag.lead, x: probeDrag.x, y: probeDrag.y } : undefined}
                 ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -1677,7 +1778,7 @@ export default function App() {
             const rEff = isV
               ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
               : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
-            const sVal = !supported || isO ? 0 : isV ? (solvedM?.dv ?? 0) : (solvedM?.dv ?? 0) / rEff
+            const sVal = !supported || isO ? 0 : isV ? (multiProbeDv(c) ?? (solvedM?.dv ?? 0)) : (solvedM?.dv ?? 0) / rEff
             const val = isO ? (result.ohm?.[c.id] ?? Infinity) : Math.abs(sVal)
             const over = supported && !isO && Math.abs(sVal) > range + 1e-9
             const needleTarget = !supported ? 0 : isO ? 10 / (10 + val) : range ? sVal / range : 0
@@ -1790,7 +1891,8 @@ export default function App() {
             )
           }
           // 数显款：LCD 读数 + 真机档位环旋钮（OFF/DCV/ACV/DCA/ACA/蜂鸣/Ω/CAP/hFE）
-          const v = mode === 'DCV' ? (solvedM?.dv ?? 0) : mode === 'DCA' ? (solvedM?.dv ?? 0) / 0.01 : (result.ohm?.[c.id] ?? Infinity)
+          const probedV = multiProbeDv(c)
+          const v = mode === 'DCV' ? (probedV ?? (solvedM?.dv ?? 0)) : mode === 'DCA' ? (solvedM?.dv ?? 0) / 0.01 : (result.ohm?.[c.id] ?? Infinity)
           const ol = (mode === 'DCV' && Math.abs(v) > 20) || (mode === 'DCA' && Math.abs(v) > 10)
           const disp = mode === 'DCV' ? (ol ? 'OL' : v.toFixed(2)) : mode === 'DCA' ? (ol ? 'OL' : v.toFixed(3)) : mode === 'OHM' ? fmtOhm(v) : ''
           const onKnob = (key: string) => s.updateParam(c.id, 'mode', key as typeof mode)
@@ -1827,15 +1929,15 @@ export default function App() {
                   {mode === 'OFF'
                     ? '已关机：拖动旋钮到 DCV/DCA/Ω 开始测量。'
                     : mode === 'DCV'
-                    ? '并联跨接在元件两端，红笔接高电位；显示负值 = 表笔接反（不影响读数）。超 20V 显示 OL。'
+                    ? '两根表笔（黑COM/红）拖到元件两端自动吸附端子即可测压，无需接线；显示负值 = 表笔接反。超 20V 显示 OL。'
                     : mode === 'DCA'
-                    ? '断开一处把表串进支路（串联）。内阻 0.01Ω 接近理想；超 10A 显示 OL。'
+                    ? '电流档须断开一处把表串进支路（接线端子 a/b）。内阻 0.01Ω 接近理想；超 10A 显示 OL。'
                     : mode === 'OHM'
-                    ? '断电测电阻：读数 = 两端间等效电阻（所有电源置零）。'
-                      + (live ? '⚠ 电路带电——测单个元件请断开一端。' : '可跨接在元件两端直接测量。')
+                    ? '两根表笔跨接在被测元件两端（自动吸附），读数 = 等效电阻（所有电源置零）。'
+                      + (live ? '⚠ 电路带电——测单个元件请断开一端。' : '')
                       + (v >= 1e7 ? ' 当前两端断路（∞）。' : '')
                     : '⚠ 该档位为真机档位（交流/蜂鸣/电容/hFE），本实验台暂未模拟——旋到 DCV/DCA/Ω 测量。'}
-                  拖动旋钮换档（棘轮定位），点刻度字直接跳档；开着面板也能继续连线。
+                  拖动旋钮换档（棘轮定位），点刻度字直接跳档；表笔尖端可拖动、靠近端子自动吸附；开着面板也能继续连线。
                 </p>
                 <button className="wide" onClick={() => setDialFor(null)}>关闭</button>
               </div>

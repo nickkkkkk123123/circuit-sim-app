@@ -96,6 +96,8 @@ export interface Multimeter extends BaseComp {
   range?: number // 数显款 DCV/DCA 的量程（V 或 A）；经典款档位直接存 mode，不用此字段
   r?: number // 经典款实际内阻基准（V 档 3000Ω@2.5V 随量程缩放 / A 档 0.06Ω·A/range）
   ideal?: boolean // 经典款理想表（内阻 ∞/0）
+  pa?: string // 黑表笔吸附的端子 id（"compId:t"；空串=未吸附）
+  pb?: string // 红表笔吸附的端子 id
 }
 
 // 万用表量程表（MF47 实物数值）

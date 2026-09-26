@@ -16,6 +16,7 @@ export interface SolveResult {
   byComp: Record<string, BranchResult> // 元件 id → 结果（导线不在内）
   openCircuit: boolean // 是否存在断路（开关断开）——灯泡等无电流
   ohm?: Record<string, number> // 欧姆表读数：两端间等效电阻（零源辅助求解），Ω
+  nodes?: Record<string, number> // 各节点电压（万用表表笔测量用）
 }
 
 // 内部分支：携带拓扑与参数
@@ -217,7 +218,10 @@ export function solve(circuit: Circuit): SolveResult {
       case 'multimeter': {
         // 只有电压/电流/电阻三档参与仿真（数显：V=10MΩ 并联、A=0.01Ω 串联；经典：内阻随量程缩放）；
         // OFF/AC/蜂鸣/CAP/hFE/未支持量程 = 开路（未模拟档无读数；Ω 读数走零源辅助解）
+        // 表笔模式：V/Ω 档且双表笔已吸附 → 表笔无源测量（主解开路，不干扰电路；读数走节点电压/零源辅助解）
         const kind = multiKindOf(c.mode)
+        const probed = !!(c.pa && c.pb)
+        if (kind === 'V' && probed) { addRes(c.id, 'multimeter', na, nb, 1e9); break }
         if (!kind || kind === 'Ω') { addRes(c.id, 'multimeter', na, nb, 1e9); break }
         const range = multiRangeOf(c.mode, c.range) ?? 0
         if (c.style === 'classic') {
@@ -330,12 +334,21 @@ export function solve(circuit: Circuit): SolveResult {
   if (ohms.length) {
     ohm = {}
     for (const o of ohms) {
+      // 表笔吸附时在两表笔端子间注入测试电流（测任意两点间等效电阻）
+      let naKey = `${o.id}:a`
+      let nbKey = `${o.id}:b`
+      if (o.kind === 'multimeter') {
+        if (o.pa && o.pb && idx.has(o.pa) && idx.has(o.pb)) { naKey = o.pa; nbKey = o.pb }
+        else if (o.pa || o.pb) { continue } // 只接了一根表笔 → 无读数
+      }
       const Ia = new Array(N).fill(0)
-      Ia[idx.get(`${o.id}:a`)!] += 1
-      Ia[idx.get(`${o.id}:b`)!] -= 1
+      Ia[idx.get(naKey)!] += 1
+      Ia[idx.get(nbKey)!] -= 1
       const Vt = solveGauss(net.G, Ia)
-      ohm[o.id] = Math.abs(Vt[idx.get(`${o.id}:a`)!] - Vt[idx.get(`${o.id}:b`)!])
+      ohm[o.id] = Math.abs(Vt[idx.get(naKey)!] - Vt[idx.get(nbKey)!])
     }
   }
-  return { branches: results, byComp, openCircuit, ohm }
+  const nodeV: Record<string, number> = {}
+  nodeIds.forEach((k, i) => { nodeV[k] = V[i] })
+  return { branches: results, byComp, openCircuit, ohm, nodes: nodeV }
 }
