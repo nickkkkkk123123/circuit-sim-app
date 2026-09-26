@@ -890,6 +890,7 @@ export default function App() {
   const [mobile, setMobile] = useState(() => window.matchMedia('(pointer: coarse)').matches && window.innerWidth < 820)
   const isTouch = mobile || window.matchMedia('(pointer: coarse)').matches
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   useEffect(() => {
     const mq = window.matchMedia('(pointer: coarse)')
     const onResize = () => {
@@ -1357,6 +1358,7 @@ export default function App() {
       >
         <div className="pal-head">
           <h1>电路实验台</h1>
+          <button className="icon-btn" onClick={() => setHelpOpen(true)} title="操作说明" style={{ fontWeight: 700 }}>?</button>
           <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
           <button className="icon-btn" onClick={() => setSbCollapsed(true)} title="收起侧栏"><UiIcon name="collapse" /></button>
         </div>
@@ -1914,9 +1916,12 @@ export default function App() {
         {result.openCircuit && <p className="warn">⚠ 电路存在断路</p>}
       </aside>
       {mobile && (
-        <button className="fab" onClick={() => { setDrawerOpen((v) => !v); s.select(null) }}>
-          {drawerOpen ? '收起元件库 ▾' : '元件库 ▴'}
-        </button>
+        <>
+          <button className="fab" onClick={() => { setDrawerOpen((v) => !v); s.select(null) }}>
+            {drawerOpen ? '收起元件库 ▾' : '元件库 ▴'}
+          </button>
+          <button className="fab help" onClick={() => setHelpOpen(true)}>? 说明</button>
+        </>
       )}
 
       {dialFor && (() => {
@@ -2290,6 +2295,50 @@ export default function App() {
           </div>
         )
       })()}
+      {helpOpen && (
+        <div className="dial-overlay" onClick={() => setHelpOpen(false)}>
+          <div className="exp-picker" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+            <div className="exp-picker-head">
+              <h2>操作说明</h2>
+              <button className="icon-btn" onClick={() => setHelpOpen(false)} title="关闭">×</button>
+            </div>
+            <section>
+              <h3>电脑端</h3>
+              <div className="exp-card" style={{ cursor: 'default' }}>
+                <span>点左侧元件 → 画布点击放置 ｜ 按住端子拖到另一端松手即连线（或点两个端子）</span>
+                <span>右键删除元件/导线 ｜ R 旋转 · Del 删除 · Ctrl+Z 撤销</span>
+                <span>滚轮缩放 · 拖空白平移 · 按 0 复位视图 ｜ 单击开关通断 · 拖变阻器箭头调阻值</span>
+                <span>点电表示数可开表盘练习读数 ｜ 选中元件可在右侧改参数、展开内部结构</span>
+              </div>
+            </section>
+            <section>
+              <h3>手机 / 触屏</h3>
+              <div className="exp-card" style={{ cursor: 'default' }}>
+                <span>「元件库」按钮呼出/收起元件列表 ｜ 拖端子连线，方法与电脑相同</span>
+                <span>长按元件或导线 = 删除（会震动）｜ 双指捏合缩放 · 单指拖空白平移</span>
+                <span>选中元件 → 底部卡片改参数、旋转、删除 ｜ 点电表示数开表盘</span>
+              </div>
+            </section>
+            <section>
+              <h3>万用表</h3>
+              <div className="exp-card" style={{ cursor: 'default' }}>
+                <span>DCV 档：两根表笔（黑/红）拖到元件两端自动吸附，直接测电压，无需接线</span>
+                <span>Ω 档：表笔跨接元件测电阻（测单个元件请先断开一端）</span>
+                <span>DCA 档测电流：断开回路一处，把两根表笔搭在断口两端（电流经表笔流过）</span>
+                <span>旋钮拖动换档 ｜ 读数负值 = 表笔接反 ｜ OL = 超量程</span>
+              </div>
+            </section>
+            <section>
+              <h3>试试这些</h3>
+              <div className="exp-card" style={{ cursor: 'default' }}>
+                <span>交流电源 + 灯泡：调低频率看灯泡随正弦闪烁</span>
+                <span>电容：充电后「清零」再看重新充电的电流变化；平行板模式拖动极板看 U=Q/C 变化</span>
+                <span>惠斯通电桥（演示电路 → 必修三）：灵敏电流计指零的平衡实验</span>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
       {s.demoOpen && (
         <div className="dial-overlay" onClick={() => s.setDemoOpen(false)}>
           <div className="exp-picker" onClick={(e) => e.stopPropagation()}>

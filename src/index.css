@@ -153,6 +153,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 .fab:active { transform: scale(0.96); }
+.fab.help { left: auto; right: 12px; bottom: 140px; padding: 12px 14px; font-size: 14px; background: var(--panel-raise); color: var(--ink); border: 1px solid var(--border); }
 
 .zoom-ctl {
   position: absolute; right: 14px; bottom: 14px;
