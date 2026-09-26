@@ -138,7 +138,18 @@ export interface Diode extends BaseComp {
 
 export interface Capacitor extends BaseComp {
   kind: 'capacitor'
-  c: number // 电容 F（默认 1000µF=0.001）；瞬态伴随模型：每步 = 电压源 v_prev 串联 R=dt/C
+  c: number // 电容 F（普通模式；默认 1000µF=0.001）
+  plate?: boolean // 平行板模式：C = εS/d 随极板间距 d、正对面积实时变化（高中决定式实验）
+  d?: number // 平行板间距 mm（2~30，默认 10）
+  o1?: number // 板1纵向偏移（-12~12，决定正对面积）
+  o2?: number // 板2纵向偏移
+}
+
+/** 电容有效电容（F）：普通模式取 c；平行板模式 C = 1000µF × 正对面积比 × (10mm/d) */
+export function capC(c: Capacitor): number {
+  if (!c.plate) return c.c
+  const overlap = Math.max(0, 1 - Math.abs((c.o1 ?? 0) - (c.o2 ?? 0)) / 24)
+  return 1e-3 * overlap * (10 / Math.max(c.d ?? 10, 2))
 }
 
 // LED 参数：正向压降、导通电阻、截止电阻、亮度基准电流

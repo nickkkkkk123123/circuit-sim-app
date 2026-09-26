@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve, type SolveResult } from './solver/mna'
 import { stepTransient, type TransientState } from './solver/transient'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, type Comp, type CompKind, type MeterPosts } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { THEME as T } from './theme'
 
@@ -63,7 +63,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -72,6 +72,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   onSliderPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onDialOpen?: (c: Comp) => void
+  onPlatePointerDown?: (e: React.PointerEvent, c: Comp, which: 1 | 2) => void
   ohmReading?: number
   rheoLabel?: string
 }) {
@@ -251,18 +252,52 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
           </>
         )
       })())}
-      {isCap && (() => (
-        // 电容：两平行板符号，上方实时电压
+      {isCap && (c.plate ? (() => {
+        // 平行板电容器：两竖直极板可拖动——横拖改间距 d，纵拖改正对面积 S（C=εS/d 决定式实验）
+        const u = solved?.dv ?? 0
+        const cap = capC(c)
+        const d = c.d ?? 10
+        const half = d * 0.6
+        const o1 = (c.o1 ?? 0) * 1.2
+        const o2 = (c.o2 ?? 0) * 1.2
+        const ovTop = Math.max(o1, o2) - 14
+        const ovH = Math.max(0, 28 - Math.abs(o1 - o2))
+        return (
+          <>
+            <text x={0} y={-44} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={Math.abs(u) > 0.01 ? T.readout : T.label}>
+              {u.toFixed(2)}V · Q={(cap * u * 1e6).toFixed(0)}µC · C={(cap * 1e6).toFixed(0)}µF
+            </text>
+            {/* 引线：端子 → 极板 */}
+            <line x1={-26} y1={0} x2={-half - 5} y2={0} stroke={stroke} strokeWidth={2} />
+            <line x1={-half - 5} y1={0} x2={-half - 5} y2={o1} stroke={stroke} strokeWidth={2} />
+            <line x1={-half - 5} y1={o1} x2={-half} y2={o1} stroke={stroke} strokeWidth={2} />
+            <line x1={26} y1={0} x2={half + 5} y2={0} stroke={stroke} strokeWidth={2} />
+            <line x1={half + 5} y1={0} x2={half + 5} y2={o2} stroke={stroke} strokeWidth={2} />
+            <line x1={half + 5} y1={o2} x2={half} y2={o2} stroke={stroke} strokeWidth={2} />
+            {/* 正对区域（半透明） */}
+            {ovH > 0 && <rect x={-half + 2} y={ovTop} width={half * 2 - 4} height={ovH} fill="var(--accent-soft)" opacity={0.15} />}
+            {/* 极板（可拖） */}
+            <line x1={-half} y1={o1 - 14} x2={-half} y2={o1 + 14} stroke={stroke} strokeWidth={4.5} strokeLinecap="round" />
+            <line x1={half} y1={o2 - 14} x2={half} y2={o2 + 14} stroke={stroke} strokeWidth={4.5} strokeLinecap="round" />
+            {/* 拖拽热区 */}
+            <rect x={-half - 7} y={o1 - 17} width={14} height={34} fill="transparent" style={{ cursor: 'move' }}
+              onPointerDown={(e) => { e.stopPropagation(); onPlatePointerDown?.(e, c, 1) }} />
+            <rect x={half - 7} y={o2 - 17} width={14} height={34} fill="transparent" style={{ cursor: 'move' }}
+              onPointerDown={(e) => { e.stopPropagation(); onPlatePointerDown?.(e, c, 2) }} />
+          </>
+        )
+      })() : (() => (
+        // 普通电容：两平行板符号
         <>
           <text x={0} y={-28} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={Math.abs(solved?.dv ?? 0) > 0.01 ? T.readout : T.label}>
-            {(solved?.dv ?? 0).toFixed(2)}V · Q={(c.c * (solved?.dv ?? 0) * 1e6).toFixed(0)}µC
+            {(solved?.dv ?? 0).toFixed(2)}V · Q={(capC(c) * (solved?.dv ?? 0) * 1e6).toFixed(0)}µC
           </text>
           <line x1={-24} y1={0} x2={-9} y2={0} stroke={stroke} strokeWidth={2} />
           <line x1={-9} y1={-9} x2={-9} y2={9} stroke={stroke} strokeWidth={3.5} />
           <line x1={9} y1={-9} x2={9} y2={9} stroke={stroke} strokeWidth={3.5} />
           <line x1={9} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
         </>
-      ))()}
+      )))}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -701,6 +736,16 @@ export default function App() {
   const toCanvas = useCursorPos(svgRef, gRef)
   const [dragging, setDragging] = useState<{ id: string; dx: number; dy: number } | null>(null)
   const [sliderDrag, setSliderDrag] = useState<{ id: string } | null>(null)
+  // 平行板极板拖拽：横拖改间距 d，纵拖改正对面积（各自独立热区）
+  const [capDrag, setCapDrag] = useState<{ id: string; which: 1 | 2; sx: number; sy: number; d0: number; o0: number } | null>(null)
+  const onPlatePointerDown = (e: React.PointerEvent, c: Comp, which: 1 | 2) => {
+    if (s.pendingFrom || s.tool !== 'select') return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    s.beginHistory()
+    const cap = c as { d?: number; o1?: number; o2?: number }
+    setCapDrag({ id: c.id, which, sx: e.clientX, sy: e.clientY, d0: cap.d ?? 10, o0: (which === 1 ? cap.o1 : cap.o2) ?? 0 })
+    s.select(c.id)
+  }
   const [switchPress, setSwitchPress] = useState<{ id: string; x0: number; y0: number; dx: number; dy: number; moved: boolean } | null>(null)
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
@@ -766,7 +811,7 @@ export default function App() {
 
   // 瞬态引擎：画布上有电容时启动时间步进（rAF 驱动；电容电压状态存 ref，不进撤销栈）
   const hasCaps = s.comps.some((c) => c.kind === 'capacitor')
-  const capVRef = useRef<Record<string, number>>({})
+  const capQRef = useRef<Record<string, number>>({})
   const curveRef = useRef<Record<string, number[]>>({})
   const [tResult, setTResult] = useState<SolveResult | null>(null)
   const [speed, setSpeed] = useState(0.05) // 仿真流速（真实秒×倍率），0=暂停
@@ -779,7 +824,7 @@ export default function App() {
       const dtReal = Math.min((now - last) / 1000, 0.05)
       last = now
       let remaining = dtReal * speed
-      let st: TransientState = { vcap: capVRef.current }
+      let st: TransientState = { qcap: capQRef.current }
       let res: SolveResult | null = null
       let guard = 0
       while (remaining > 1e-6 && guard++ < 250) {
@@ -789,7 +834,7 @@ export default function App() {
         res = out.result
         remaining -= dt
       }
-      capVRef.current = st.vcap
+      capQRef.current = st.qcap
       // U-t 曲线采样（每电容保留 400 点），并清理已删元件
       for (const k of Object.keys(curveRef.current)) {
         if (!s.comps.some((c) => c.id === k)) delete curveRef.current[k]
@@ -797,7 +842,7 @@ export default function App() {
       for (const c of s.comps) {
         if (c.kind !== 'capacitor') continue
         const arr = curveRef.current[c.id] ?? (curveRef.current[c.id] = [])
-        arr.push(st.vcap[c.id] ?? 0)
+        arr.push((st.qcap[c.id] ?? 0) / capC(c))
         if (arr.length > 400) arr.shift()
       }
       if (res) setTResult(res)
@@ -929,6 +974,21 @@ export default function App() {
       }
       return
     }
+    if (capDrag) {
+      // 平行板：横向拖 = 改变极板间距 d（mm），纵向拖 = 改变该板偏移（正对面积）
+      const c = s.comps.find((k) => k.id === capDrag.id)
+      if (c?.kind === 'capacitor' && c.plate) {
+        const ctmSvg = svgRef.current?.getScreenCTM()
+        const k = ctmSvg?.a ?? 1
+        const dx = (e.clientX - capDrag.sx) / k
+        const dy = (e.clientY - capDrag.sy) / k
+        const d = Math.min(30, Math.max(2, capDrag.d0 + (capDrag.which === 2 ? dx : -dx) * 0.8))
+        s.updateParam(c.id, 'd', Math.round(d * 10) / 10)
+        const o = Math.max(-12, Math.min(12, capDrag.o0 + dy / 1.2))
+        s.updateParam(c.id, capDrag.which === 1 ? 'o1' : 'o2', Math.round(o * 10) / 10)
+      }
+      return
+    }
     if (switchPress) {
       // 开关：拖远（>6px）转为移动元件
       const dist = Math.hypot(x - switchPress.x0, y - switchPress.y0)
@@ -1010,6 +1070,7 @@ export default function App() {
   const release = (e?: React.PointerEvent) => {
     setDragging(null)
     setSliderDrag(null)
+    setCapDrag(null)
     // 平移结束：未拖动=维持原"取消选中"语义
     if (pan) {
       setPan(null)
@@ -1250,6 +1311,7 @@ export default function App() {
                 onSliderPointerDown={onSliderPointerDown}
                 onSwitchPointerDown={onSwitchPointerDown}
                 onDialOpen={(c) => { setDialFor(c.id); setDialPos(null) }}
+                onPlatePointerDown={onPlatePointerDown}
                 ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -1416,18 +1478,33 @@ export default function App() {
               )
             })()}
             {selected.kind === 'capacitor' && (() => {
-              const u = selResult?.dv ?? capVRef.current[selected.id] ?? 0
-              const q = selected.c * u * 1e6
-              const e = 0.5 * selected.c * u * u * 1000
+              const u = selResult?.dv ?? 0
+              const cap = capC(selected)
+              const q = cap * u * 1e6
+              const e = 0.5 * cap * u * u * 1000
+              const overlap = selected.plate ? Math.max(0, 1 - Math.abs((selected.o1 ?? 0) - (selected.o2 ?? 0)) / 24) : 1
               const hist = curveRef.current[selected.id] ?? []
               const max = Math.max(0.5, ...hist.map(Math.abs))
               const pts = hist.map((v, i) => `${((i / Math.max(1, hist.length - 1)) * 220).toFixed(1)},${(20 - (v / max) * 17).toFixed(1)}`).join(' ')
               return (
                 <>
-                  <label>电容 {(selected.c * 1e6).toFixed(0)}µF
-                    <input type="range" min={10} max={4700} step={10} value={Math.round(selected.c * 1e6)}
-                      onChange={(ev) => s.updateParam(selected.id, 'c', +ev.target.value / 1e6)} />
+                  <label style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={!!selected.plate}
+                      onChange={(ev) => s.updateParam(selected.id, 'plate', ev.target.checked)} />
+                    平行板模式（极板可拖动）
                   </label>
+                  {selected.plate ? (
+                    <p className="warn" style={{ margin: 0 }}>
+                      d = {selected.d ?? 10}mm · 正对面积 {(overlap * 100).toFixed(0)}% · C = {(cap * 1e6).toFixed(0)}µF
+                      <br />横拖极板改间距 d，纵拖改正对面积 S。
+                      <br />【决定式实验】先连电源充电，再断开电源（Q 不变）：拖远极板 → C 变小 → U=Q/C 升高；上下错开极板 → S 变小 → U 同样升高。
+                    </p>
+                  ) : (
+                    <label>电容 {(selected.c * 1e6).toFixed(0)}µF
+                      <input type="range" min={10} max={4700} step={10} value={Math.round(selected.c * 1e6)}
+                        onChange={(ev) => s.updateParam(selected.id, 'c', +ev.target.value / 1e6)} />
+                    </label>
+                  )}
                   <svg width={220} height={40} style={{ borderRadius: 4, background: 'var(--panel-line)' }}>
                     <line x1={0} y1={20} x2={220} y2={20} stroke="var(--faint)" strokeWidth={0.5} strokeDasharray="3 3" />
                     {hist.length > 1 && <polyline points={pts} fill="none" stroke="var(--accent-soft)" strokeWidth={1.5} />}
