@@ -1631,6 +1631,12 @@ export default function App() {
                     <line x1={0} y1={20} x2={220} y2={20} stroke="var(--faint)" strokeWidth={0.5} strokeDasharray="3 3" />
                     {hist.length > 1 && <polyline points={pts} fill="none" stroke="var(--accent-soft)" strokeWidth={1.5} />}
                   </svg>
+                  <button className="wide" onClick={() => {
+                    capQRef.current[selected.id] = 0
+                    curveRef.current[selected.id] = []
+                  }}>
+                    电容清零（Q=0，重新演示充电）
+                  </button>
                   <p className="warn" style={{ margin: 0 }}>
                     U = {u.toFixed(2)}V · Q = {q.toFixed(0)}µC · E = ½CU² = {e.toFixed(2)}mJ
                     {selResult && Math.abs(selResult.current) > 1e-6 ? ' · 充/放电中' : ' · 稳态（无电流）'}。
