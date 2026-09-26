@@ -179,7 +179,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   ammeter: 24,
   galvanometer: 24,
   ohmmeter: 24,
-  multimeter: 26,
+  multimeter: 46,
   spdt: 28,
   led: 24,
 }

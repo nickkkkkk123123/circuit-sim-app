@@ -185,7 +185,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         return (
           <>
             <text
-              x={0} y={-34} textAnchor="middle" fontSize={13} fontWeight={600}
+              x={0} y={-40} textAnchor="middle" fontSize={13} fontWeight={600}
               fill={T.readout}
               style={{ cursor: 'pointer' }}
               onPointerDown={(e) => { e.stopPropagation(); onDialOpen?.(c) }}
@@ -193,34 +193,36 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
               {mode === 'OHM' ? fmtOhm(ohmReading ?? Infinity) : multiLcd}{mode === 'OHM' || mode === 'OFF' || !MULTI_SUPPORTED(mode) ? '' : mode}
               <title>点击查看表盘</title>
             </text>
-            <rect x={-30} y={-26} width={60} height={52} rx={4} fill="#f7f8fa" stroke={stroke} strokeWidth={2.5} />
+            <rect x={-46} y={-32} width={92} height={64} rx={5} fill="#f5f2e9" stroke={stroke} strokeWidth={2.5} />
             {/* 表盘窗 */}
-            <rect x={-26} y={-22} width={52} height={24} rx={2} fill="#fdfdfd" stroke="#c9d2e0" strokeWidth={1} />
-            <path d="M -21 -8 Q 0 -15 21 -8" fill="none" stroke="#2a3140" strokeWidth={0.8} />
-            <path d="M -21 -3 Q 0 -10 21 -3" fill="none" stroke="#2a3140" strokeWidth={0.8} />
+            <rect x={-40} y={-27} width={80} height={34} rx={2} fill="#fdfdfd" stroke="#c9d2e0" strokeWidth={1} />
+            <path d="M -33 -11 Q 0 -21 33 -11" fill="none" stroke="#2a3140" strokeWidth={0.9} />
+            <path d="M -33 -5 Q 0 -15 33 -5" fill="none" stroke="#2a3140" strokeWidth={0.7} opacity={0.7} />
+            <path d="M -33 -1 Q 0 -11 33 -1" fill="none" stroke="#c0392b" strokeWidth={0.7} opacity={0.6} />
             {/* 指针（表盘窗内随读数偏转） */}
-            <line x1={0} y1={-1} x2={Math.sin(nAng) * 17} y2={-1 - Math.cos(nAng) * 17} stroke="#c0392b" strokeWidth={1.6} strokeLinecap="round" />
-            <circle cx={0} cy={-1} r={1.8} fill="#c0392b" />
+            <line x1={0} y1={2} x2={Math.sin(nAng) * 26} y2={2 - Math.cos(nAng) * 26} stroke="#c0392b" strokeWidth={1.8} strokeLinecap="round" />
+            <circle cx={0} cy={2} r={2} fill="#c0392b" />
             {/* 机械调零螺丝（装饰） */}
-            <line x1={-2.5} y1={1.5} x2={2.5} y2={1.5} stroke="#55617e" strokeWidth={1.2} />
-            {/* 档位旋钮（指针指向当前档位） */}
-            <circle cx={0} cy={14} r={8} fill="#e8ebf2" stroke={stroke} strokeWidth={1.8} />
-            <line x1={0} y1={14} x2={Math.sin(kAng) * 6.5} y2={14 - Math.cos(kAng) * 6.5} stroke="#c0392b" strokeWidth={2} strokeLinecap="round" />
+            <line x1={-3} y1={4.5} x2={3} y2={4.5} stroke="#55617e" strokeWidth={1.2} />
+            <text x={28} y={-9} fontSize={7} fontWeight={700} fill="#55617e">A-V-Ω</text>
+            {/* 档位旋钮（黑色，白指针指向当前档位） */}
+            <circle cx={0} cy={17} r={11} fill="#2f3540" stroke="#1e232e" strokeWidth={2} />
+            <line x1={0} y1={17} x2={Math.sin(kAng) * 8.5} y2={17 - Math.cos(kAng) * 8.5} stroke="#f2f4f8" strokeWidth={2.5} strokeLinecap="round" />
             {/* 表笔插孔 +/− */}
-            <circle cx={-18} cy={21} r={2.4} fill="none" stroke="#55617e" strokeWidth={1.2} />
-            <circle cx={18} cy={21} r={2.4} fill="none" stroke="#55617e" strokeWidth={1.2} />
-            <text x={-24} y={23} fontSize={7} fill="#55617e">−</text>
-            <text x={21} y={23} fontSize={7} fill="#55617e">+</text>
+            <circle cx={-32} cy={22} r={3.2} fill="none" stroke="#55617e" strokeWidth={1.4} />
+            <circle cx={32} cy={22} r={3.2} fill="none" stroke="#55617e" strokeWidth={1.4} />
+            <text x={-42} y={24} fontSize={8} fill="#55617e">−</text>
+            <text x={37} y={24} fontSize={8} fill="#55617e">+</text>
           </>
         )
       })() : (() => {
-        // 数显款（VC890D 式）：LCD 大屏在上 + 中央功能旋钮 + 下缘 COM/VΩ/10A 插孔
+        // 数显款（VC890D 式）：横身机身 = 左 LCD 大屏 + 右功能旋钮 + 下缘 COM/VΩ/10A 插孔
         const mode = c.mode
         const kAng = ((-135 + 270 * Math.max(0, DIGI_KNOB.findIndex((p) => p.key === mode)) / 8) * Math.PI) / 180
         return (
           <>
             <text
-              x={0} y={-34} textAnchor="middle" fontSize={13} fontWeight={600}
+              x={0} y={-40} textAnchor="middle" fontSize={13} fontWeight={600}
               fill={T.readout}
               style={{ cursor: 'pointer' }}
               onPointerDown={(e) => { e.stopPropagation(); onDialOpen?.(c) }}
@@ -228,25 +230,21 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
               {multiLcd}{mode === 'OHM' || mode === 'OFF' || !MULTI_SUPPORTED(mode) ? '' : mode}
               <title>点击打开万用表面板（拖动旋钮换档）</title>
             </text>
-            <rect x={-30} y={-26} width={60} height={52} rx={6} fill="#f7f8fa" stroke={stroke} strokeWidth={2.5} />
+            <rect x={-46} y={-32} width={92} height={64} rx={7} fill="#f7f8fa" stroke={stroke} strokeWidth={2.5} />
             {/* LCD 大屏 */}
-            <rect x={-25} y={-23} width={50} height={16} rx={2} fill="#d8e4d0" stroke="#55617e" strokeWidth={1} />
-            <text x={-2} y={-10.5} textAnchor="middle" fontSize={10} fontWeight={700} fill="#2a3140" fontFamily="monospace">{multiLcd}</text>
-            <text x={20} y={-10.5} textAnchor="middle" fontSize={7.5} fontWeight={700} fill="#55617e">{mode === 'OHM' ? 'Ω' : mode}</text>
-            {/* 中央功能旋钮（指针指向当前档位，装饰——换挡走面板/侧栏） */}
-            <circle cx={0} cy={9} r={9} fill="#e8ebf2" stroke={stroke} strokeWidth={1.8} />
-            <line x1={0} y1={9} x2={Math.sin(kAng) * 7} y2={9 - Math.cos(kAng) * 7} stroke="#c0392b" strokeWidth={2} strokeLinecap="round" />
-            <text x={-17} y={2} fontSize={6.5} fill="#55617e">DCV</text>
-            <text x={-3} y={-4.5} fontSize={6.5} fill="#55617e">DCA</text>
-            <text x={12} y={2} fontSize={6.5} fill="#55617e">Ω</text>
-            <text x={-28} y={16} fontSize={6.5} fill="#55617e">OFF</text>
+            <rect x={-40} y={-26} width={52} height={24} rx={2} fill="#d8e4d0" stroke="#55617e" strokeWidth={1} />
+            <text x={-14} y={-9} textAnchor="middle" fontSize={12} fontWeight={700} fill="#2a3140" fontFamily="monospace">{multiLcd}</text>
+            <text x={6} y={-9} textAnchor="middle" fontSize={9} fontWeight={700} fill="#55617e">{mode === 'OHM' ? 'Ω' : MULTI_SUPPORTED(mode) ? mode : ''}</text>
+            {/* 功能旋钮（指针指向当前档位，装饰——换挡走面板/侧栏） */}
+            <circle cx={26} cy={-8} r={13} fill="#e8ebf2" stroke={stroke} strokeWidth={1.8} />
+            <line x1={26} y1={-8} x2={26 + Math.sin(kAng) * 10} y2={-8 - Math.cos(kAng) * 10} stroke="#c0392b" strokeWidth={2.2} strokeLinecap="round" />
             {/* 下缘插孔 COM / VΩ / 10A */}
-            <circle cx={-18} cy={19.5} r={2.2} fill="none" stroke="#55617e" strokeWidth={1.2} />
-            <circle cx={0} cy={19.5} r={2.2} fill="none" stroke="#55617e" strokeWidth={1.2} />
-            <circle cx={18} cy={19.5} r={2.2} fill="none" stroke="#55617e" strokeWidth={1.2} />
-            <text x={-23} y={25.5} fontSize={5.5} fill="#55617e">COM</text>
-            <text x={-4} y={25.5} fontSize={5.5} fill="#55617e">VΩ</text>
-            <text x={13.5} y={25.5} fontSize={5.5} fill="#55617e">10A</text>
+            <circle cx={-30} cy={22} r={2.8} fill="none" stroke="#55617e" strokeWidth={1.3} />
+            <circle cx={0} cy={22} r={2.8} fill="none" stroke="#55617e" strokeWidth={1.3} />
+            <circle cx={30} cy={22} r={2.8} fill="none" stroke="#55617e" strokeWidth={1.3} />
+            <text x={-37} y={29} fontSize={6} fill="#55617e">COM</text>
+            <text x={-4} y={29} fontSize={6} fill="#55617e">VΩ</text>
+            <text x={24} y={29} fontSize={6} fill="#55617e">10A</text>
           </>
         )
       })())}
@@ -458,10 +456,10 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
       <g className="pop-in symbol" onPointerDown={onPointerDown} onContextMenu={onContextMenu} style={{ cursor: 'grab' }}>
         {/* 命中热区：开关额外放大（可双击通断），电池展开态随虚线框加宽 */}
         <rect
-          x={c.kind === 'battery' && c.expanded ? -48 : c.kind === 'multimeter' ? -32 : -hitHalf}
-          y={-28}
-          width={c.kind === 'battery' && c.expanded ? 96 : c.kind === 'multimeter' ? 64 : hitHalf * 2}
-          height={56}
+          x={c.kind === 'battery' && c.expanded ? -48 : c.kind === 'multimeter' ? -46 : -hitHalf}
+          y={c.kind === 'multimeter' ? -32 : -28}
+          width={c.kind === 'battery' && c.expanded ? 96 : c.kind === 'multimeter' ? 92 : hitHalf * 2}
+          height={c.kind === 'multimeter' ? 64 : 56}
           fill="transparent"
         />
         {c.kind === 'switch' && (
@@ -476,9 +474,9 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
       </g>
       {/* 标签反向旋转：元件竖置时读数仍保持水平可读 */}
       <g transform={c.rot === 90 ? 'rotate(-90)' : undefined}>
-        <text x={0} y={c.kind === 'bulb' ? 34 : 30} fill={T.label} fontSize={11} textAnchor="middle">{label}</text>
+        <text x={0} y={c.kind === 'bulb' ? 34 : c.kind === 'multimeter' ? 46 : 30} fill={T.label} fontSize={11} textAnchor="middle">{label}</text>
         {readout && (
-          <text x={0} y={c.kind === 'bulb' ? 48 : 44} fill={selected ? T.accentSoft : T.readout} fontSize={11} textAnchor="middle">
+          <text x={0} y={c.kind === 'bulb' ? 48 : c.kind === 'multimeter' ? 60 : 44} fill={selected ? T.accentSoft : T.readout} fontSize={11} textAnchor="middle">
             {readout}
           </text>
         )}
