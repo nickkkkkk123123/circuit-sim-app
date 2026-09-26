@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Circuit, Comp, CompKind, Wire, MeterPosts } from './solver/types'
+import type { Circuit, Comp, CompKind, Wire, MeterPosts, Gate } from './solver/types'
 import { defaultComp } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 
@@ -52,6 +52,10 @@ interface EditorState extends Circuit {
   loadDemo: () => void
   demoOpen: boolean
   setDemoOpen: (open: boolean) => void
+  gateType: Gate['type'] // 逻辑门放置弹窗里选中的待放类型
+  gatePickerOpen: boolean
+  setGateType: (t: Gate['type']) => void
+  setGatePickerOpen: (open: boolean) => void
   loadExperiment: (id: string) => void
   clearAll: () => void
   undo: () => void
@@ -80,6 +84,8 @@ export const useEditor = create<EditorState>((set, get) => {
   selectedWire: null,
   pendingFrom: null,
   demoOpen: false,
+  gateType: 'AND',
+  gatePickerOpen: false,
   histCount: 0,
 
   setTool: (tool) => set({ tool, pendingFrom: null, selectedId: null }),
@@ -87,6 +93,7 @@ export const useEditor = create<EditorState>((set, get) => {
   place: (kind, x, y) => {
     pushUndo()
     const c = defaultComp(kind, nextId(kind), Math.round(x / 10) * 10, Math.round(y / 10) * 10)
+    if (kind === 'gate') (c as Gate).type = get().gateType
     set((s) => ({ comps: [...s.comps, c], selectedId: c.id, tool: 'select' }))
   },
 
@@ -204,6 +211,10 @@ export const useEditor = create<EditorState>((set, get) => {
   loadDemo: () => get().loadExperiment('basic'),
 
   setDemoOpen: (demoOpen) => set({ demoOpen }),
+
+  // 选型即进入放置态；弹窗不关，可连续换类型连放多个门
+  setGateType: (gateType) => set({ gateType, tool: 'gate', pendingFrom: null, selectedId: null }),
+  setGatePickerOpen: (gatePickerOpen) => set({ gatePickerOpen }),
 
   // 载入实验预设：包内 id 只保证唯一，这里统一重编全局 id，避免与画布现有元件撞车
   loadExperiment: (id) => {

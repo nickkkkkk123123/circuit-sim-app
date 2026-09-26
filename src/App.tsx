@@ -1422,8 +1422,15 @@ export default function App() {
         {palette.map((p) => (
           <button
             key={p.kind}
-            className={s.tool === p.kind ? 'active' : ''}
-            onClick={() => s.setTool(s.tool === p.kind ? 'select' : p.kind)}
+            className={p.kind === 'gate' ? (s.gatePickerOpen ? 'active' : '') : s.tool === p.kind ? 'active' : ''}
+            onClick={() => {
+              if (p.kind === 'gate') {
+                // 逻辑门：不直接进放置态，先弹选型窗（选完不关，可连续换类型连放）
+                s.setGatePickerOpen(!s.gatePickerOpen)
+                return
+              }
+              s.setTool(s.tool === p.kind ? 'select' : p.kind)
+            }}
           >
             <MiniSymbol kind={p.kind} />
             {p.label}
@@ -2426,6 +2433,55 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* 逻辑门选型窗：选完不关闭，可连续换类型放置 */}
+      {s.gatePickerOpen && (
+        <div className="dial-overlay" onClick={() => s.setGatePickerOpen(false)}>
+          <div className="exp-picker" onClick={(e) => e.stopPropagation()}>
+            <div className="exp-picker-head">
+              <h2>选择逻辑门类型</h2>
+              <button className="icon-btn" onClick={() => s.setGatePickerOpen(false)} title="关闭">×</button>
+            </div>
+            <section>
+              <h3>组合逻辑门</h3>
+              <div className="exp-cards">
+                {(['AND', 'OR', 'NOT'] as const).map((t) => {
+                  const sym = t === 'AND' ? '&' : t === 'OR' ? '≥1' : '1'
+                  const name = t === 'AND' ? '与门 AND' : t === 'OR' ? '或门 OR' : '非门 NOT'
+                  const desc = t === 'AND' ? '输入全高才输出高（Y = A·B）' : t === 'OR' ? '任一输入高就输出高（Y = A+B）' : '输入高则输出低（Y = Ā，只用输入 a）'
+                  return (
+                    <button
+                      key={t}
+                      className={`exp-card${s.gateType === t ? ' gate-pick-active' : ''}`}
+                      onClick={() => s.setGateType(t)}
+                    >
+                      <strong>{name}</strong>
+                      <span>{desc}</span>
+                      <svg width={54} height={34} viewBox="-27 -17 54 34" aria-hidden style={{ marginTop: 6 }}>
+                        {t !== 'NOT' && (<>
+                          <line x1={-24} y1={-7} x2={-11} y2={-7} className="gate-mini-line" />
+                          <line x1={-24} y1={7} x2={-11} y2={7} className="gate-mini-line" />
+                        </>)}
+                        {t === 'NOT' && (<>
+                          <line x1={-24} y1={0} x2={-11} y2={0} className="gate-mini-line" />
+                          <circle cx={14} cy={0} r={2.5} className="gate-mini-dot" />
+                        </>)}
+                        <rect x={-11} y={-11} width={22} height={22} rx={2} className="gate-mini-line" />
+                        <text x={0} y={5} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--ink)">{sym}</text>
+                        <line x1={11} y1={0} x2={24} y2={0} className="gate-mini-line" />
+                      </svg>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="warn" style={{ marginTop: 10 }}>
+                选中后在画布点击放置；此窗保持打开，可换类型连续放置。
+                ⚠ VCC(c) 和 GND(d) 必须接电源，门才能工作；输入 ≥1.5V 为高电平。
+              </p>
+            </section>
+          </div>
+        </div>
+      )}
+
       {s.demoOpen && (
         <div className="dial-overlay" onClick={() => s.setDemoOpen(false)}>
           <div className="exp-picker" onClick={(e) => e.stopPropagation()}>

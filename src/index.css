@@ -245,6 +245,11 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .exp-card strong { font-size: 13px; color: var(--accent-soft); }
 .exp-card span { font-size: 12px; line-height: 1.55; color: var(--muted); }
 
+/* 逻辑门选型卡片：当前待放类型高亮 */
+.exp-card.gate-pick-active { border-color: var(--accent-soft); background: var(--panel-hover); box-shadow: 0 0 0 1px var(--accent-soft) inset; }
+.gate-mini-line { stroke: var(--ink); stroke-width: 1.8; fill: none; stroke-linecap: round; }
+.gate-mini-dot { fill: var(--ink); }
+
 /* 侧栏按钮行（清空/撤销） */
 .pal-row { display: flex; gap: 8px; }
 .pal-row button { flex: 1; font-size: 12px; padding: 8px 10px; }
