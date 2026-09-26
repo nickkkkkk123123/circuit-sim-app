@@ -816,7 +816,7 @@ export default function App() {
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
   }, [probeDrag])
 
-  // 触屏双指捏合缩放：window 级追踪指针（落点无论在元件还是空白都算数），
+  // 触屏双指捏合缩放：window 捕获阶段追踪指针（先于 React 处理器，元件/导线上的手指也算数），
   // 两指落进画布即进入捏合——中点世界坐标锚定，指间距驱动 scale，挂起其他拖拽手势
   useEffect(() => {
     const inStage = (ev: PointerEvent) => !!(ev.target as Element | null)?.closest?.('.stage')
@@ -843,9 +843,13 @@ export default function App() {
         const c = { x: (actives[0].x + actives[1].x) / 2, y: (actives[0].y + actives[1].y) / 2 }
         const c1 = toCanvas({ clientX: c.x, clientY: c.y } as React.PointerEvent)
         const f = Math.min(4, Math.max(0.2, d / (pinchRef.current.d || 1)))
-        const scale = Math.min(3, Math.max(0.4, viewRef.current.scale * f))
+        // 锚点数学：中点的 viewBox 坐标 = 世界坐标×scale + t（c1 是世界坐标，要先换算回 viewBox）
+        const st = viewRef.current
+        const mvbX = c1.x * st.scale + st.tx
+        const mvbY = c1.y * st.scale + st.ty
+        const scale = Math.min(3, Math.max(0.4, st.scale * f))
         const c0 = { x: pinchRef.current.cx, y: pinchRef.current.cy }
-        applyView({ scale, tx: c1.x - c0.x * scale, ty: c1.y - c0.y * scale })
+        applyView({ scale, tx: mvbX - c0.x * scale, ty: mvbY - c0.y * scale })
         pinchRef.current = { d, cx: c1.x, cy: c1.y }
       }
     }
@@ -853,15 +857,16 @@ export default function App() {
       pointersRef.current.delete(ev.pointerId)
       if (pointersRef.current.size < 2) pinchRef.current = null
     }
-    window.addEventListener('pointerdown', down)
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
+    // capture=true：先于 React 的 stopPropagation，任何元件上的手指都不会漏记
+    window.addEventListener('pointerdown', down, true)
+    window.addEventListener('pointermove', move, true)
+    window.addEventListener('pointerup', up, true)
+    window.addEventListener('pointercancel', up, true)
     return () => {
-      window.removeEventListener('pointerdown', down)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
+      window.removeEventListener('pointerdown', down, true)
+      window.removeEventListener('pointermove', move, true)
+      window.removeEventListener('pointerup', up, true)
+      window.removeEventListener('pointercancel', up, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
