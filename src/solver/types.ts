@@ -89,7 +89,13 @@ export interface Ohmmeter extends BaseComp {
 
 export interface Multimeter extends BaseComp {
   kind: 'multimeter'
-  mode: 'V' | 'A' | 'Ω' // 数字万用表三档：V=直流电压（并联跨接，内阻 10MΩ）、A=直流电流（串联，内阻 0.01Ω）、Ω=电阻（断电测，读戴维南电阻）
+  // 档位（照真机旋钮）：OFF=关机；DCV=直流电压（并联跨接）；DCA=直流电流（串联）；OHM=电阻（断电测，读戴维南电阻）
+  // ACV/ACA/BUZZ/CAP/hFE=真机有但本实验台未模拟的档（选中呈开路、无读数）
+  mode: 'OFF' | 'DCV' | 'ACV' | 'DCA' | 'ACA' | 'BUZZ' | 'OHM' | 'CAP' | 'hFE'
+  style?: 'digital' | 'classic' // 数显款（缺省，LCD+侧栏旋钮）/ 经典款（指针表盘+档位旋钮）
+  range?: number // 经典款量程：DCV 2.5|10|50|250 V；DCA 0.5|0.05|0.005|0.0005 A（数显款自动量程不用）
+  r?: number // 经典款实际内阻基准（DCV 档 3000Ω@2.5V 基准随量程缩放 / DCA 档 0.06Ω·A/range）
+  ideal?: boolean // 经典款理想表（内阻 ∞/0）
 }
 
 export interface Spdt extends BaseComp {
@@ -216,7 +222,7 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
     case 'ohmmeter':
       return { id, kind, x, y, rot: 0 }
     case 'multimeter':
-      return { id, kind, x, y, rot: 0, mode: 'V' }
+      return { id, kind, x, y, rot: 0, mode: 'DCV', style: 'digital', range: 2.5 }
     case 'spdt':
       return { id, kind, x, y, rot: 0, pos: 1 }
     case 'led':

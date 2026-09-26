@@ -421,7 +421,7 @@ describe('MNA 求解器', () => {
     it('V 档：跨接电阻两端读出端电压（5.94V），几乎不影响电路', () => {
       const comps: Comp[] = [
         ...base(),
-        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'V' },
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'DCV' },
       ]
       const wires: Wire[] = [
         { id: 'w1', a: 'b1:a', b: 'r1:a' },
@@ -438,7 +438,7 @@ describe('MNA 求解器', () => {
     it('A 档：串联接入支路，读数 = 支路电流', () => {
       const comps: Comp[] = [
         ...base(),
-        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'A' },
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'DCA' },
       ]
       const wires: Wire[] = [
         { id: 'w1', a: 'b1:a', b: 'r1:a' },
@@ -451,10 +451,28 @@ describe('MNA 求解器', () => {
       expect(r.byComp['r1'].current).toBeCloseTo(r.byComp['m1'].current, 3)
     })
 
+    it('OFF 档：主解开路（不影响电路）且不做 Ω 辅助解', () => {
+      const comps: Comp[] = [
+        ...base(),
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'OFF' },
+      ]
+      const wires: Wire[] = [
+        { id: 'w1', a: 'b1:a', b: 'r1:a' },
+        { id: 'w2', a: 'r1:a', b: 'm1:a' },
+        { id: 'w3', a: 'm1:b', b: 'r1:b' },
+        { id: 'w4', a: 'r1:b', b: 'b1:b' },
+      ]
+      const r = solve({ comps, wires })
+      expect(r.byComp['m1'].current).toBeCloseTo(0, 6)
+      // 电路照常工作：r1 上电流 ≈ 0.59A
+      expect(r.byComp['r1'].current).toBeCloseTo(0.59, 1)
+      expect(r.ohm).toBeUndefined() // OFF 档不注入 Ω 辅助解
+    })
+
     it('Ω 档：无源电路跨接电阻 → 读数 = 该电阻阻值；主解不影响电路', () => {
       const comps: Comp[] = [
         { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
-        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'Ω' },
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'OHM' },
       ]
       const wires: Wire[] = [
         { id: 'w1', a: 'm1:a', b: 'r1:a' },
@@ -468,7 +486,7 @@ describe('MNA 求解器', () => {
     it('Ω 档带电电路：读数 = 戴维南等效电阻（r1 ∥ 电源内阻）', () => {
       const comps: Comp[] = [
         ...base(),
-        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'Ω' },
+        { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'OHM' },
       ]
       const wires: Wire[] = [
         { id: 'w1', a: 'b1:a', b: 'r1:a' },
