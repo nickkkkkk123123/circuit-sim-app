@@ -371,3 +371,6 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .menu-card:hover .menu-arrow { transform: translateX(5px); color: var(--accent-soft); }
 .menu-beta { color: #e08a97; font-style: normal; font-size: 13px; vertical-align: super; margin-left: 2px; }
 .menu-foot { margin-top: 34px; font-size: 12px; color: var(--muted); letter-spacing: 1.5px; }
+
+/* 侧栏头部第二行：工具按钮（?/主题/主页/收起），标题独占一行避免压扁 */
+.pal-head-tools { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; }

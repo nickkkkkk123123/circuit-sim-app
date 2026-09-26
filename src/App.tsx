@@ -1492,9 +1492,12 @@ export default function App() {
       >
         <div className="pal-head">
           <h1>电路实验台</h1>
+        </div>
+        <div className="pal-head-tools">
           <button className="icon-btn" onClick={() => setHelpOpen(true)} title="操作说明" style={{ fontWeight: 700 }}>?</button>
           <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
           <button className="icon-btn" onClick={() => setEntryView('menu')} title="返回主页"><UiIcon name="home" /></button>
+          <span style={{ flex: 1 }} />
           <button className="icon-btn" onClick={() => setSbCollapsed(true)} title="收起侧栏"><UiIcon name="collapse" /></button>
         </div>
         <p className="hint">点击元件后在画布点击放置</p>
