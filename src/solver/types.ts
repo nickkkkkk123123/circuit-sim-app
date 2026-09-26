@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led' | 'capacitor'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led' | 'capacitor' | 'acsource'
 
 export interface BaseComp {
   id: string
@@ -154,6 +154,13 @@ export function capC(c: Capacitor): number {
   return 1e-3 * overlap * (10 / Math.max(c.d ?? 10, 2))
 }
 
+export interface ACSource extends BaseComp {
+  kind: 'acsource'
+  e: number // 峰值电压 V（e(t) = E·sin(2πft)）
+  f: number // 频率 Hz（默认 2Hz，肉眼可见闪烁；可调到 50Hz）
+  r: number // 内阻 Ω（0=理想，求解器钳位 1mΩ）
+}
+
 // LED 参数：正向压降、导通电阻、截止电阻、亮度基准电流
 export const LED_VF = 2
 export const LED_R_ON = 0.01
@@ -164,7 +171,7 @@ export const LED_I_FULL = 0.02
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode | Capacitor
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode | Capacitor | ACSource
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -199,6 +206,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   ohmmeter: 24,
   multimeter: 46,
   capacitor: 26,
+  acsource: 30,
   spdt: 28,
   led: 24,
 }
@@ -276,5 +284,7 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0 }
     case 'capacitor':
       return { id, kind, x, y, rot: 0, c: 0.001 }
+    case 'acsource':
+      return { id, kind, x, y, rot: 0, e: 6, f: 2, r: 0.5 }
   }
 }

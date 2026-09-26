@@ -44,6 +44,7 @@ const KIND_NAME: Record<CompKind, string> = {
   ohmmeter: '欧姆表',
   multimeter: '万用表',
   capacitor: '电容',
+  acsource: '交流电源',
   spdt: '单刀双掷开关',
   led: '二极管',
   bulb: '小灯泡',
@@ -254,7 +255,6 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
         )
       })())}
       {isCap && (c.plate ? (() => {
-        // 平行板电容器：两竖直极板可拖动——横拖改间距 d，纵拖改正对面积 S（C=εS/d 决定式实验）
         const u = solved?.dv ?? 0
         const cap = capC(c)
         const d = c.d ?? 10
@@ -299,6 +299,18 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
           <line x1={9} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
         </>
       ))())}
+      {c.kind === 'acsource' && (() => (
+        // 交流电源：圆圈+正弦波符号，上方瞬时电压
+        <>
+          <text x={0} y={-28} textAnchor="middle" fontSize={12} fontWeight={600} fill={T.readout}>
+            {(solved?.dv ?? 0).toFixed(1)}V
+          </text>
+          <line x1={-24} y1={0} x2={-13} y2={0} stroke={stroke} strokeWidth={2} />
+          <circle r={13} fill="none" stroke={stroke} strokeWidth={2.5} />
+          <path d="M -7 1 Q -3.5 -8 0 1 T 7 1" fill="none" stroke={stroke} strokeWidth={1.8} />
+          <line x1={13} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
+        </>
+      ))}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -478,6 +490,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
   const label =
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'capacitor' ? `${(c.c * 1e6).toFixed(0)}µF`
+    : c.kind === 'acsource' ? `${c.e}V · ${c.f}Hz`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? (meterRangeOf(c) === null ? '⚠ 表笔未接好' : `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`)
@@ -682,6 +695,10 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
           {kind === 'voltmeter' ? 'V' : kind === 'ammeter' ? 'A' : kind === 'ohmmeter' ? 'Ω' : 'G'}
         </text>
       </>)}
+      {kind === 'acsource' && (<>
+        <circle r={11} {...st} />
+        <path d="M -6 0 Q -3 -7 0 0 T 6 0" transform="translate(0,0)" {...st} strokeWidth={1.8} />
+      </>)}
       {kind === 'multimeter' && (<>
         <rect x={-15} y={-12} width={30} height={24} rx={3} {...st} />
         <line x1={-11} y1={-7} x2={11} y2={-7} {...st} strokeWidth={1.2} />
@@ -861,14 +878,15 @@ export default function App() {
 
   const staticResult = useMemo(() => solve({ comps: s.comps, wires: s.wires }), [s.comps, s.wires])
 
-  // 瞬态引擎：画布上有电容时启动时间步进（rAF 驱动；电容电压状态存 ref，不进撤销栈）
-  const hasCaps = s.comps.some((c) => c.kind === 'capacitor')
+  // 瞬态引擎：画布上有电容或交流源时启动时间步进（rAF 驱动；状态存 ref，不进撤销栈）
+  const hasDyn = s.comps.some((c) => c.kind === 'capacitor' || c.kind === 'acsource')
   const capQRef = useRef<Record<string, number>>({})
+  const tRef = useRef(0)
   const curveRef = useRef<Record<string, number[]>>({})
   const [tResult, setTResult] = useState<SolveResult | null>(null)
   const [speed, setSpeed] = useState(0.05) // 仿真流速（真实秒×倍率），0=暂停
   useEffect(() => {
-    if (!hasCaps) { setTResult(null); return }
+    if (!hasDyn) { setTResult(null); return }
     let raf = 0
     let last = performance.now()
     const DT = 0.0002 // 单步 0.2ms
@@ -876,7 +894,7 @@ export default function App() {
       const dtReal = Math.min((now - last) / 1000, 0.05)
       last = now
       let remaining = dtReal * speed
-      let st: TransientState = { qcap: capQRef.current }
+      let st: TransientState = { qcap: capQRef.current, t: tRef.current }
       let res: SolveResult | null = null
       let guard = 0
       while (remaining > 1e-6 && guard++ < 250) {
@@ -887,6 +905,7 @@ export default function App() {
         remaining -= dt
       }
       capQRef.current = st.qcap
+      tRef.current = st.t
       // U-t 曲线采样（每电容保留 400 点），并清理已删元件
       for (const k of Object.keys(curveRef.current)) {
         if (!s.comps.some((c) => c.id === k)) delete curveRef.current[k]
@@ -902,7 +921,7 @@ export default function App() {
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [hasCaps, s.comps, s.wires, speed])
+  }, [hasDyn, s.comps, s.wires, speed])
   const result = tResult ?? staticResult
 
   // 持久化：电路一变就存
@@ -1180,6 +1199,7 @@ export default function App() {
     { kind: 'spdt', label: '单刀双掷' },
     { kind: 'led', label: '二极管' },
     { kind: 'capacitor', label: '电容' },
+    { kind: 'acsource', label: '交流电源' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -1251,7 +1271,7 @@ export default function App() {
             <span className="dot" style={{ background: '#9aa3b8' }} />撤销 {canUndo ? `(${undoCount})` : ''}
           </button>
         </div>
-        {hasCaps && (
+        {hasDyn && (
           <label className="speed-ctl">
             仿真流速 ×{speed.toFixed(2)}（0 = 暂停）
             <input type="range" min={0} max={1} step={0.01} value={speed} onChange={(e) => setSpeed(+e.target.value)} />
@@ -1596,6 +1616,29 @@ export default function App() {
                     {isV ? '并联在被测元件两端' : '串联接入被测支路'}
                     {selected.ideal ? ' · 理想表不影响电路' : ' · 实际表会改变电路，注意读数偏差'}
                     {selected.customRange ? ' · 自定义量程下无表盘可读' : ' · 点示数可查看表盘'}
+                  </p>
+                </>
+              )
+            })()}
+            {selected.kind === 'acsource' && (() => {
+              const inst = selResult?.dv ?? 0
+              return (
+                <>
+                  <label>峰值电压 {selected.e}V
+                    <input type="range" min={1} max={24} step={0.5} value={selected.e}
+                      onChange={(e) => s.updateParam(selected.id, 'e', +e.target.value)} />
+                  </label>
+                  <label>频率 {selected.f}Hz
+                    <input type="range" min={0.5} max={50} step={0.5} value={selected.f}
+                      onChange={(e) => s.updateParam(selected.id, 'f', +e.target.value)} />
+                  </label>
+                  <label>内阻 {selected.r === 0 ? '0（理想）' : `${selected.r}Ω`}
+                    <input type="range" min={0} max={10} step={0.1} value={selected.r}
+                      onChange={(e) => s.updateParam(selected.id, 'r', +e.target.value)} />
+                  </label>
+                  <p className="warn" style={{ margin: 0 }}>
+                    正弦源 e(t) = {selected.e}·sin(2π·{selected.f}·t) V，当前瞬时 {inst.toFixed(2)}V。
+                    直流电表读到的是瞬时值（会摆动）；配合电容可看充放电跟随，低频率下灯泡闪烁肉眼可见。
                   </p>
                 </>
               )

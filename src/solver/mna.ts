@@ -133,6 +133,10 @@ export function solve(circuit: Circuit): SolveResult {
           branches.push({ refId: c.id, kind: 'battery', na, nb, r: Math.max(c.r, 1e-3), emf: c.emf })
         }
         break
+      case 'acsource':
+        // 静态回退（瞬态引擎会按 e(t)=E·sin(2πft) 每步覆盖）：t=0 时 sin=0
+        branches.push({ refId: c.id, kind: 'battery', na, nb, r: Math.max(c.r, 1e-3), emf: 0 })
+        break
       case 'resistor':
         addRes(c.id, 'resistor', na, nb, c.r)
         break

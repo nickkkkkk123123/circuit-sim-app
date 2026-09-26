@@ -79,6 +79,36 @@ describe('瞬态引擎（电容伴随模型，状态=电荷Q）', () => {
     expect(r.byComp['r1'].current).toBeCloseTo(r.byComp['m1'].current, 3)
   })
 
+  it('AC 电源：电阻负载瞬时电流跟随正弦（1Hz、t=0.25s 时达峰值）', () => {
+    const comps: Comp[] = [
+      { id: 'ac1', kind: 'acsource', x: 0, y: 0, rot: 0, e: 6, f: 1, r: 0.5 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'ac1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'ac1:b' },
+    ]
+    const st0 = emptyTransient()
+    let st = st0
+    let last: SolveResult | null = null
+    // 步进到 t=0.25s（1Hz 的四分之一周期，正弦达峰值 6V）
+    for (let i = 0; i < 250; i++) {
+      const out = stepTransient({ comps, wires }, st, 0.001)
+      st = out.state
+      last = out.result
+    }
+    expect(st.t).toBeCloseTo(0.25, 3)
+    // i = E·sin(π/2) / (10+0.5) ≈ 0.571A
+    expect(last!.byComp['r1'].current).toBeCloseTo(6 / 10.5, 1)
+    // 再走 1/4 周期到峰值后回落：t=0.5s 时 sin(π)=0 → 无电流
+    for (let i = 0; i < 250; i++) {
+      const out = stepTransient({ comps, wires }, st, 0.001)
+      st = out.state
+      last = out.result
+    }
+    expect(last!.byComp['r1'].current).toBeLessThan(0.01)
+  })
+
   it('平行板决定式：Q 不变时 d 拉大一倍 → U = Q/C 翻倍', () => {
     const comps: Comp[] = [{ id: 'c1', kind: 'capacitor', x: 0, y: 0, rot: 0, c: 0.001, plate: true, d: 10, o1: 0, o2: 0 }]
     const st = emptyTransient()
