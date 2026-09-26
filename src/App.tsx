@@ -610,7 +610,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
 }
 
 /** 界面小图标：内联 SVG 代替文字符号——emoji 走系统彩色字体回退，字形大小/基线各机不同会撑破按钮 */
-function UiIcon({ name }: { name: 'sun' | 'moon' | 'collapse' | 'expand' }) {
+function UiIcon({ name }: { name: 'sun' | 'moon' | 'collapse' | 'expand' | 'home' }) {
   const st = { stroke: 'currentColor', strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
   return (
     <svg width={14} height={14} viewBox="0 0 24 24" aria-hidden>
@@ -621,6 +621,7 @@ function UiIcon({ name }: { name: 'sun' | 'moon' | 'collapse' | 'expand' }) {
       {name === 'moon' && <path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a7 7 0 0 0 9.7 9.7z" {...st} />}
       {name === 'collapse' && <path d="M5 4v16M20 12H8M12 7l-5 5 5 5" {...st} />}
       {name === 'expand' && <path d="M19 4v16M4 12h12M12 7l5 5-5 5" {...st} />}
+      {name === 'home' && <path d="M4 11 12 4l8 7M6.5 9.5V20h11V9.5M10 20v-5h4v5" {...st} />}
     </svg>
   )
 }
@@ -1471,6 +1472,7 @@ export default function App() {
           </div>
           <p className="menu-foot">72 项自动化测试 · 离线可运行 · 支持手机触屏</p>
         </div>
+        {kinOpen && <KinematicsLab onClose={() => setKinOpen(false)} />}
       </div>
     )
   }
@@ -1492,6 +1494,7 @@ export default function App() {
           <h1>电路实验台</h1>
           <button className="icon-btn" onClick={() => setHelpOpen(true)} title="操作说明" style={{ fontWeight: 700 }}>?</button>
           <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
+          <button className="icon-btn" onClick={() => setEntryView('menu')} title="返回主页"><UiIcon name="home" /></button>
           <button className="icon-btn" onClick={() => setSbCollapsed(true)} title="收起侧栏"><UiIcon name="collapse" /></button>
         </div>
         <p className="hint">点击元件后在画布点击放置</p>
