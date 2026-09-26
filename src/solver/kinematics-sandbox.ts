@@ -17,6 +17,7 @@ export interface SandboxParams {
   g: number // 重力加速度 m/s²（向下为正）
   W: number // 场地宽 m
   H: number // 场地高 m
+  ground: boolean // 地面开关：false = 底边不碰撞（球掉出由调用方回收）
 }
 
 export function makeBall(id: number, x: number, y: number, r: number, vx = 0, vy = 0, e = 1): Ball {
@@ -38,7 +39,7 @@ export function wallCollisions(balls: Ball[], p: SandboxParams): void {
     if (b.x - b.r < 0) { b.x = b.r; if (b.vx < 0) b.vx = -b.vx * b.e }
     if (b.x + b.r > p.W) { b.x = p.W - b.r; if (b.vx > 0) b.vx = -b.vx * b.e }
     if (b.y - b.r < 0) { b.y = b.r; if (b.vy < 0) b.vy = -b.vy * b.e }
-    if (b.y + b.r > p.H) { b.y = p.H - b.r; if (b.vy > 0) b.vy = -b.vy * b.e }
+    if (b.y + b.r > p.H && p.ground) { b.y = p.H - b.r; if (b.vy > 0) b.vy = -b.vy * b.e }
   }
 }
 

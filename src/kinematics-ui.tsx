@@ -9,9 +9,7 @@ const BALL_COLORS = ['#5e6ad2', '#e08a97', '#4aa3a2', '#c9a227', '#7a9e4f', '#b0
 type Tool = 'select' | 'ball' | 'seg' | 'arc'
 type Sel = { type: 'ball' | 'static'; id: number } | null
 
-const SCALE = 18 // px per m
-const W = 42, H = 20 // 场地 m
-const toPx = (x: number, y: number) => ({ px: 20 + x * SCALE, py: 70 + y * SCALE }) // 世界 y 向下=重力向下
+const W = 42, H = 20 // 场地 m（世界坐标：y 向下=重力向下）
 
 export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const [balls, setBalls] = useState<Ball[]>([])
@@ -19,18 +17,25 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const [tool, setTool] = useState<Tool>('ball')
   const [sel, setSel] = useState<Sel>(null)
   const [g, setG] = useState(9.8)
+  const [gOn, setGOn] = useState(true)
+  const [ground, setGround] = useState(true)
   const [running, setRunning] = useState(false)
   const [trails, setTrails] = useState(true)
+  const [view, setView] = useState({ scale: 18, tx: 20, ty: 70 }) // 世界 m → viewBox px：px = world·scale + t
   const [, setTick] = useState(0)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const viewRef = useRef(view)
+  viewRef.current = view
   const ballsRef = useRef<Ball[]>([])
   const staticsRef = useRef<StaticShape[]>([])
   const trailRef = useRef<Map<number, string[]>>(new Map())
-  const dragRef = useRef<{ kind: 'place' | 'move'; sx: number; sy: number; cx: number; cy: number; movedSel: Sel } | null>(null)
+  const dragRef = useRef<{ kind: 'place' | 'move' | 'pan'; sx: number; sy: number; cx: number; cy: number; movedSel: Sel } | null>(null)
   const idRef = useRef(1)
   ballsRef.current = balls
   staticsRef.current = statics
 
   const nextId = () => idRef.current++
+  const toPx = (x: number, y: number) => ({ px: x * view.scale + view.tx, py: y * view.scale + view.ty })
 
   useEffect(() => {
     if (!running) return
@@ -39,8 +44,17 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     const loop = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.05)
       last = now
-      const params: SandboxParams = { g, W, H }
+      const params: SandboxParams = { g: gOn ? g : 0, W, H, ground }
       stepSandbox(ballsRef.current, staticsRef.current, params, dt, 4)
+      // 无地面时：掉出场地深处的球回收
+      if (!ground) {
+        const alive = ballsRef.current.filter((b) => b.y < H + 15)
+        if (alive.length !== ballsRef.current.length) {
+          setBalls(alive)
+          ballsRef.current = alive
+          for (const b of alive) if (!trailRef.current.has(b.id)) trailRef.current.delete(0)
+        }
+      }
       if (trails) {
         for (const b of ballsRef.current) {
           const arr = trailRef.current.get(b.id) ?? []
@@ -55,13 +69,33 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [running, g, trails])
+  }, [running, g, gOn, ground, trails])
+
+  // 滚轮缩放（光标锚定）——React onWheel 是 passive，必须走原生监听
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const r = el.getBoundingClientRect()
+      const px = ((e.clientX - r.left) / r.width) * 800
+      const py = ((e.clientY - r.top) / r.height) * 450
+      setView((v) => {
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
+        const scale = Math.max(4, Math.min(60, v.scale * factor))
+        const f = scale / v.scale
+        return { scale, tx: px - (px - v.tx) * f, ty: py - (py - v.ty) * f }
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   const svgPoint = (e: React.PointerEvent) => {
     const r = (e.currentTarget as SVGElement).getBoundingClientRect()
     return { wx: ((e.clientX - r.left) / r.width) * 800, wy: ((e.clientY - r.top) / r.height) * 450 }
   }
-  const worldOf = (d: { x: number; y: number }) => ({ wx: (d.x - 20) / SCALE, wy: (d.y - 70) / SCALE })
+  const worldOf = (d: { x: number; y: number }) => ({ wx: (d.x - view.tx) / view.scale, wy: (d.y - view.ty) / view.scale })
 
   const placeAt = (wx: number, wy: number, vx: number, vy: number) => {
     if (tool === 'ball') {
@@ -189,6 +223,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         {/* 主区：画布 + 全局控制 */}
         <div className="kin-main">
           <svg
+            ref={svgRef}
             viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 12, border: '1px solid var(--border)', touchAction: 'none', cursor: tool === 'select' ? 'default' : 'crosshair' }}
             onPointerDown={(e) => {
               const { wx, wy } = svgPoint(e)
@@ -196,16 +231,23 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
               const w = worldOf({ x: wx, y: wy }) // svgPoint 是 viewBox 像素坐标，必须先转世界米坐标！
               if (tool === 'seg' || tool === 'arc') { placeAt(w.wx, w.wy, 0, 0); return } // 斜面/圆弧：点击即放默认尺寸
               dragRef.current = { kind: tool === 'ball' ? 'place' : 'move', sx: wx, sy: wy, cx: wx, cy: wy, movedSel: null }
-              if (tool === 'select') setSel(hitTest(w.wx, w.wy))
+              if (tool === 'select') {
+                const hit = hitTest(w.wx, w.wy)
+                setSel(hit)
+                if (!hit) dragRef.current.kind = 'pan' // 空白处拖动 = 平移视图（电学台同款）
+              }
             }}
             onPointerMove={(e) => {
               const d = dragRef.current
               if (!d) return
               const { wx, wy } = svgPoint(e)
+              const dx = wx - d.cx, dy = wy - d.cy
               d.cx = wx; d.cy = wy
-              if (d.kind === 'move' && tool === 'select' && sel) {
-                const dx = (wx - d.cx) / SCALE, dy = (wy - d.cy) / SCALE
-                if (sel.type === 'ball') setBalls((q) => q.map((b) => (b.id === sel.id ? { ...b, x: b.x + dx, y: b.y + dy } : b)))
+              if (d.kind === 'pan') {
+                setView((v) => ({ ...v, tx: v.tx + dx, ty: v.ty + dy }))
+              } else if (d.kind === 'move' && tool === 'select' && sel) {
+                const wdx = dx / view.scale, wdy = dy / view.scale
+                if (sel.type === 'ball') setBalls((q) => q.map((b) => (b.id === sel.id ? { ...b, x: b.x + wdx, y: b.y + wdy } : b)))
               }
               setTick((v) => v + 1)
             }}
@@ -216,28 +258,41 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
               const { wx, wy } = svgPoint(e)
               const a = worldOf({ x: d.sx, y: d.sy })
               if (a.wx < 0 || a.wx > W || a.wy < 0 || a.wy > H) return
-              addBall(a.wx, a.wy, ((wx - d.sx) / SCALE) * 3, ((wy - d.sy) / SCALE) * 3)
+              addBall(a.wx, a.wy, ((wx - d.sx) / view.scale) * 3, ((wy - d.sy) / view.scale) * 3)
             }}
           >
-            <line x1={10} y1={430} x2={790} y2={430} stroke="var(--ink)" strokeWidth={2} />
-            {[5, 10, 15, 20, 25, 30, 35, 40].map((m) => (
-              <g key={m}>
-                <line x1={20 + m * SCALE} y1={426} x2={20 + m * SCALE} y2={434} stroke="var(--ink)" strokeWidth={1} />
-                <text x={20 + m * SCALE} y={446} fontSize={10} textAnchor="middle" fill="var(--muted, #889)">{m}m</text>
-              </g>
-            ))}
-            {[5, 10, 15].map((m) => (
-              <g key={m}>
-                <line x1={16} y1={70 + (H - m) * SCALE} x2={24} y2={70 + (H - m) * SCALE} stroke="var(--ink)" strokeWidth={1} />
-                <text x={4} y={74 + (H - m) * SCALE} fontSize={10} fill="var(--muted, #889)">{m}m</text>
-              </g>
-            ))}
+            {/* 网格：随缩放换步长（电学台坐标系同款） */}
+            {(() => {
+              const s = view.scale
+              const step = s >= 14 ? 1 : s >= 6 ? 5 : 10
+              const x0 = (20 - view.tx) / s, x1 = (780 - view.tx) / s
+              const y0 = (70 - view.ty) / s, y1 = (430 - view.ty) / s
+              const lines: React.ReactElement[] = []
+              for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) {
+                const { px } = toPx(x, 0)
+                const major = Math.abs(x % (step * 5)) < 1e-6
+                lines.push(<line key={`gx${x}`} x1={px} y1={70} x2={px} y2={430} stroke="var(--border)" strokeWidth={major ? 1 : 0.5} opacity={major ? 0.7 : 0.35} />)
+                if (major) lines.push(<text key={`gxl${x}`} x={px} y={444} fontSize={9} textAnchor="middle" fill="var(--muted, #889)">{x}m</text>)
+              }
+              for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) {
+                const { py } = toPx(0, y)
+                const major = Math.abs(y % (step * 5)) < 1e-6
+                lines.push(<line key={`gy${y}`} x1={20} y1={py} x2={780} y2={py} stroke="var(--border)" strokeWidth={major ? 1 : 0.5} opacity={major ? 0.7 : 0.35} />)
+                if (major && y !== 0) lines.push(<text key={`gyl${y}`} x={6} y={py + 3} fontSize={9} fill="var(--muted, #889)">{y}m</text>)
+              }
+              return lines
+            })()}
+            {/* 地面（可关闭）：关闭后球掉出场地即回收 */}
+            {ground && (() => {
+              const f = toPx(0, H)
+              return <line x1={10} y1={f.py} x2={790} y2={f.py} stroke="var(--ink)" strokeWidth={2.5} />
+            })()}
             {/* 静态体 */}
             {statics.map((s) => {
               const pts = s.kind === 'seg' ? (() => { const ep = segEndpoints(s); return [[ep.ax, ep.ay], [ep.bx, ep.by]] })() : arcPoints(s).map((q) => [q.x, q.y])
               const d = pts.map(([x, y]) => { const { px, py } = toPx(x, y); return `${px},${py}` }).join(' ')
               const isSel = sel?.type === 'static' && sel.id === s.id
-              return <polyline key={s.id} points={d} fill="none" stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'var(--ink)'} strokeWidth={isSel ? 5 : 4} strokeLinecap="round" />
+              return <polyline key={s.id} points={d} fill="none" stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'var(--ink)'} strokeWidth={Math.max(2, 0.14 * view.scale)} strokeLinecap="round" />
             })}
             {trails && balls.map((b) => {
               const arr = trailRef.current.get(b.id) ?? []
@@ -246,7 +301,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
             {balls.map((b) => {
               const { px, py } = toPx(b.x, b.y)
               const isSel = sel?.type === 'ball' && sel.id === b.id
-              return <circle key={b.id} cx={px} cy={py} r={b.r * SCALE} fill={BALL_COLORS[(b.id - 1) % BALL_COLORS.length]} stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'none'} strokeWidth={3} opacity={0.9} />
+              return <circle key={b.id} cx={px} cy={py} r={b.r * view.scale} fill={BALL_COLORS[(b.id - 1) % BALL_COLORS.length]} stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'none'} strokeWidth={3} opacity={0.9} />
             })}
             {dragRef.current?.kind === 'place' && (
               <line x1={dragRef.current.sx} y1={dragRef.current.sy} x2={dragRef.current.cx} y2={dragRef.current.cy} stroke="#e08a97" strokeWidth={2} />
@@ -262,13 +317,20 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
             <span>碰撞按冲量模型求解。运动学抛体已并入沙盒——小球+拖拽初速就是斜抛，配斜面/圆弧可搭滑行与弹射。</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 10 }}>
-            <label style={{ flex: 1, minWidth: 150 }}>
-              重力 {g}m/s²
-              <input type="range" min={0} max={25} step={0.1} value={g} onChange={(e) => setG(+e.target.value)} />
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={gOn} onChange={(e) => setGOn(e.target.checked)} />重力
+            </label>
+            <label style={{ flex: 1, minWidth: 150, opacity: gOn ? 1 : 0.4 }}>
+              重力 {gOn ? g : 0}m/s²
+              <input type="range" min={0.5} max={25} step={0.1} value={g} disabled={!gOn} onChange={(e) => setG(+e.target.value)} />
+            </label>
+            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={ground} onChange={(e) => setGround(e.target.checked)} />地面
             </label>
             <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" checked={trails} onChange={(e) => setTrails(e.target.checked)} />轨迹
             </label>
+            <button onClick={() => { setView({ scale: 18, tx: 20, ty: 70 }) }}>⤢ 复位视图</button>
           </div>
           <div className="pal-row" style={{ marginTop: 10 }}>
             <button onClick={() => setRunning((v) => !v)}>{running ? '⏸ 暂停' : '▶ 运行'}</button>

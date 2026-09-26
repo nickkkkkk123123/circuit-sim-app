@@ -336,7 +336,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .dial-cables { position: fixed; inset: 0; z-index: 55; pointer-events: none; }
 
 /* ── 主界面菜单（电学实验室）── */
-.menu { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; background: var(--panel); }
+.menu { min-height: 100vh; display: flex; position: relative; background: var(--panel); overflow: auto; padding: 40px 20px; box-sizing: border-box; }
 .menu-bg {
   position: absolute; inset: 0; pointer-events: none;
   background:
@@ -349,7 +349,7 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   mask-image: radial-gradient(circle at 50% 45%, #000 30%, transparent 78%);
   -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 30%, transparent 78%);
 }
-.menu-body { position: relative; text-align: center; padding: 48px 20px; width: min(640px, 94vw); }
+.menu-body { position: relative; text-align: center; padding: 48px 20px; width: min(640px, 94vw); margin: auto; }
 .menu-badge { display: inline-block; font-size: 11px; letter-spacing: 3px; color: var(--accent-soft); border: 1px solid var(--border); border-radius: 999px; padding: 5px 16px; margin: 0 0 6px; }
 .menu-title { font-size: clamp(46px, 9vw, 78px); letter-spacing: 12px; text-indent: 12px; margin: 14px 0 8px; color: var(--ink); font-weight: 800; line-height: 1.1; }
 .menu-sub { color: var(--muted); margin: 0 0 40px; font-size: 14px; }

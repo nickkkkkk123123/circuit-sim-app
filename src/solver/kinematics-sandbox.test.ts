@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ballCollisions, kineticEnergy, makeBall, stepSandbox, wallCollisions, type Ball, type SandboxParams, type StaticShape } from './kinematics-sandbox'
 
-const P = (over?: Partial<SandboxParams>): SandboxParams => ({ g: 9.8, W: 40, H: 20, ...over })
+const P = (over?: Partial<SandboxParams>): SandboxParams => ({ g: 9.8, W: 40, H: 20, ground: true, ...over })
 const B = (id: number, x: number, y: number, vx = 0, vy = 0, r = 0.5): Ball => makeBall(id, x, y, r, vx, vy)
 
 describe('运动学沙盒（物理引擎）', () => {
