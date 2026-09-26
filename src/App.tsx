@@ -831,6 +831,21 @@ export default function App() {
   const [sbCollapsed, setSbCollapsed] = useState(false)
   const [sbWidth, setSbWidth] = useState(200)
   const [sbResizing, setSbResizing] = useState(false)
+  // 手机/触屏适配：coarse 指针 + 窄屏 → 底部抽屉布局 + 触控手势
+  const [mobile, setMobile] = useState(() => window.matchMedia('(pointer: coarse)').matches && window.innerWidth < 820)
+  const isTouch = mobile || window.matchMedia('(pointer: coarse)').matches
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: coarse)')
+    const onResize = () => {
+      const m = mq.matches && window.innerWidth < 820
+      setMobile(m)
+      if (m) applyView({ scale: 1.2, tx: 0, ty: 0 })
+    }
+    window.addEventListener('resize', onResize)
+    onResize()
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const gripDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     const sx = e.clientX
@@ -985,6 +1000,41 @@ export default function App() {
 
   const [pan, setPan] = useState<{ sx: number; sy: number; tx0: number; ty0: number; active: boolean } | null>(null)
 
+  // 触屏：双指捏合缩放（两指都在空白处按下触发）；单指仍为平移
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ d: number; cx: number; cy: number } | null>(null)
+  // 长按删除（仅触屏）：按住 500ms 删除元件/导线
+  const lpRef = useRef<number | null>(null)
+  const lpCleanupRef = useRef<(() => void) | null>(null)
+  const clearLP = () => {
+    if (lpRef.current) { clearTimeout(lpRef.current); lpRef.current = null }
+    lpCleanupRef.current?.()
+    lpCleanupRef.current = null
+  }
+  const startLP = (fn: () => void, e: React.PointerEvent) => {
+    if (!isTouch) return
+    clearLP()
+    const sx = e.clientX, sy = e.clientY
+    const move = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 10) clearLP()
+    }
+    const timer = window.setTimeout(() => {
+      clearLP()
+      navigator.vibrate?.(30)
+      fn()
+    }, 500)
+    lpRef.current = timer
+    const cleanup = () => {
+      if (lpRef.current === timer) { clearTimeout(timer); lpRef.current = null }
+      window.removeEventListener('pointermove', move)
+      lpCleanupRef.current = null
+    }
+    lpCleanupRef.current = cleanup
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', cleanup, { once: true })
+    window.addEventListener('pointercancel', cleanup, { once: true })
+  }
+
   const onCanvasPointerDown = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
     if (s.tool !== 'select') {
@@ -997,6 +1047,16 @@ export default function App() {
     }
     s.select(null)
     s.selectWire(null)
+    // 触屏：记录按下指针，凑满两指进入捏合缩放
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 忽略 */ }
+    if (pointersRef.current.size === 2) {
+      const [a, b] = [...pointersRef.current.values()]
+      setPan(null)
+      clearLP()
+      pinchRef.current = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: 0, cy: 0 }
+      return
+    }
     // 空白处按下：进入平移待定（拖动超 6px 才算平移，原地点击=取消选中）
     // 起点必须存屏幕坐标——世界坐标随平移自身变化，用它算增量会自激振荡（画布重影）
     setPan({ sx: e.clientX, sy: e.clientY, tx0: viewRef.current.tx, ty0: viewRef.current.ty, active: false })
@@ -1023,6 +1083,24 @@ export default function App() {
 
   const onCanvasPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
+    // 捏合缩放优先：两指都在画布上时按指间距改 scale、中点位移做平移
+    if (pointersRef.current.has(e.pointerId)) pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pointersRef.current.size === 2 && pinchRef.current) {
+      const [a, b] = [...pointersRef.current.values()]
+      const d = Math.hypot(a.x - b.x, a.y - b.y)
+      const c1 = toCanvas({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 } as React.PointerEvent)
+      const f = Math.min(4, Math.max(0.2, d / (pinchRef.current.d || 1)))
+      const scale = Math.min(3, Math.max(0.4, viewRef.current.scale * f))
+      const c0 = { x: pinchRef.current.cx, y: pinchRef.current.cy }
+      // 首次移动：c0 还没初始化（down 时没算世界坐标）——先记下中点世界坐标
+      if (!pinchRef.current.cx && !pinchRef.current.cy) {
+        pinchRef.current = { d, cx: c1.x, cy: c1.y }
+        return
+      }
+      applyView({ scale, tx: c1.x - c0.x * scale, ty: c1.y - c0.y * scale })
+      pinchRef.current = { d, cx: c1.x, cy: c1.y }
+      return
+    }
     if (pan) {
       // 平移画布：增量在屏幕像素空间计算，只除 svg 线性系数（k）——
       // 1:1 跟手的关键：dtx = D/k，与视图缩放无关（多除一次 scale 就是现在的变速 bug）
@@ -1116,6 +1194,7 @@ export default function App() {
     // 捕获指针：拖拽中鼠标甩出画布/快速移动也不丢事件
     e.currentTarget.setPointerCapture(e.pointerId)
     s.beginHistory() // 拖拽快照：整个手势算一步撤销
+    startLP(() => s.remove(c.id), e) // 触屏长按删除
     setDragging({ id: c.id, dx: x - c.x, dy: y - c.y })
     s.select(c.id)
   }
@@ -1142,6 +1221,9 @@ export default function App() {
     setDragging(null)
     setSliderDrag(null)
     setCapDrag(null)
+    // 触屏：抬起指针退出捏合
+    if (e) pointersRef.current.delete(e.pointerId)
+    if (pointersRef.current.size < 2) pinchRef.current = null
     // 平移结束：未拖动=维持原"取消选中"语义
     if (pan) {
       setPan(null)
@@ -1234,16 +1316,16 @@ export default function App() {
 
   return (
     <div className="app">
-      {!sbCollapsed && <div className="grip" onPointerDown={gripDown} />}
-      {sbCollapsed && (
+      {!mobile && !sbCollapsed && <div className="grip" onPointerDown={gripDown} />}
+      {!mobile && sbCollapsed && (
         <div className="sb-reopen">
           <button className="icon-btn" onClick={() => setSbCollapsed(false)} title="展开侧栏"><UiIcon name="expand" /></button>
           <button className="icon-btn" onClick={toggleTheme} title="切换主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
         </div>
       )}
       <aside
-        className={`palette${sbResizing ? ' resizing' : ''}`}
-        style={{ width: sbCollapsed ? 0 : sbWidth, borderWidth: sbCollapsed ? 0 : undefined, padding: sbCollapsed ? 0 : undefined }}
+        className={`palette${mobile ? ' mobile' : ''}${mobile && !drawerOpen ? ' hidden' : ''}${sbResizing ? ' resizing' : ''}`}
+        style={mobile ? undefined : { width: sbCollapsed ? 0 : sbWidth, borderWidth: sbCollapsed ? 0 : undefined, padding: sbCollapsed ? 0 : undefined }}
       >
         <div className="pal-head">
           <h1>电路实验台</h1>
@@ -1354,7 +1436,7 @@ export default function App() {
                     </polygon>
                   ))
                 })()}
-                {/* 命中区：悬停显抓点，右键直接删除 */}
+                {/* 命中区：悬停显抓点，右键/触屏长按删除 */}
                 <line
                   x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                   stroke="transparent"
@@ -1362,7 +1444,7 @@ export default function App() {
                   style={{ cursor: 'pointer' }}
                   onPointerEnter={() => s.selectWire(w.id)}
                   onPointerLeave={() => { if (s.selectedWire === w.id && !grabbedEnd) s.selectWire(null) }}
-                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => { e.stopPropagation(); startLP(() => s.removeWire(w.id), e) }}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -1499,7 +1581,7 @@ export default function App() {
         </div>
       </main>
 
-      <aside className="inspector">
+      <aside className={`inspector${mobile ? ' mobile-sheet' : ''}${mobile && !selected ? ' hidden' : ''}`}>
         <h2>{selected ? KIND_NAME[selected.kind] : '未选中'}</h2>
         {selected && (
           <div className="params">
@@ -1795,11 +1877,19 @@ export default function App() {
                 <div>功率 {selResult.power.toFixed(3)} W</div>
               </div>
             )}
-            <button className="wide danger" onClick={() => s.remove(selected.id)}>删除元件</button>
+            <div className="pal-row">
+              <button className="wide" onClick={() => s.rotate(selected.id)}>旋转</button>
+              <button className="wide danger" onClick={() => s.remove(selected.id)}>删除</button>
+            </div>
           </div>
         )}
         {result.openCircuit && <p className="warn">⚠ 电路存在断路</p>}
       </aside>
+      {mobile && (
+        <button className="fab" onClick={() => { setDrawerOpen((v) => !v); s.select(null) }}>
+          {drawerOpen ? '收起元件库 ▾' : '元件库 ▴'}
+        </button>
+      )}
 
       {dialFor && (() => {
         // 表盘读数练习弹窗：复刻学生实验电表——双排刻度（上=大量程，下=小量程）、30 小格
