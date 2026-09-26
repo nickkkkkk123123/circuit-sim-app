@@ -4,6 +4,7 @@ import { solve, type SolveResult } from './solver/mna'
 import { stepTransient, type TransientState } from './solver/transient'
 import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts, type Gate } from './solver/types'
 import { EXPERIMENTS } from './experiments'
+import { KinematicsLab } from './kinematics-ui'
 import { THEME as T } from './theme'
 
 const W = 1600
@@ -966,6 +967,7 @@ export default function App() {
   const isTouch = mobile || window.matchMedia('(pointer: coarse)').matches
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [kinOpen, setKinOpen] = useState(false)
   useEffect(() => {
     const mq = window.matchMedia('(pointer: coarse)')
     const onResize = () => {
@@ -1469,6 +1471,7 @@ export default function App() {
         ))}
         <div className="divider" />
         <button onClick={() => s.setDemoOpen(true)}><span className="dot" style={{ background: '#5e6ad2' }} />演示电路</button>
+        <button onClick={() => setKinOpen(true)}><span className="dot" style={{ background: '#4aa3a2' }} />运动学实验室 β</button>
         <div className="pal-row">
           <button onClick={() => { if (confirm('清空画布上的全部元件和导线？')) s.clearAll() }}>
             <span className="dot" style={{ background: '#e08a97' }} />清空画布
@@ -2476,6 +2479,8 @@ export default function App() {
         </div>
       )}
       {/* 逻辑门选型窗：选完不关闭，可连续换类型放置 */}
+      {kinOpen && <KinematicsLab onClose={() => setKinOpen(false)} />}
+
       {s.gatePickerOpen && (
         <div className="dial-overlay" onClick={() => s.setGatePickerOpen(false)}>
           <div className="exp-picker" onClick={(e) => e.stopPropagation()}>
