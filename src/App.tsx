@@ -297,7 +297,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
           <line x1={9} y1={-9} x2={9} y2={9} stroke={stroke} strokeWidth={3.5} />
           <line x1={9} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
         </>
-      )))}
+      ))())}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -1234,6 +1234,7 @@ export default function App() {
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     stroke={T.wire.live} strokeWidth={T.wire.width} strokeLinecap="round" strokeDasharray="7 11"
                     className="current-flow"
+                    style={{ animationDirection: (wr.dv ?? 0) >= 0 ? 'normal' : 'reverse' }}
                   />
                 )}
                 {/* 命中区：悬停显抓点，右键直接删除 */}
