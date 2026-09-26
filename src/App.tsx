@@ -968,8 +968,7 @@ export default function App() {
   const isTouch = mobile || window.matchMedia('(pointer: coarse)').matches
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [kinOpen, setKinOpen] = useState(false)
-  const [entryView, setEntryView] = useState<'menu' | 'app'>('menu') // 主界面菜单 → 电学台
+  const [entryView, setEntryView] = useState<'menu' | 'app' | 'kin'>('menu') // 主界面菜单 → 电学台/运动学
   useEffect(() => {
     const mq = window.matchMedia('(pointer: coarse)')
     const onResize = () => {
@@ -1435,6 +1434,9 @@ export default function App() {
   }
 
   // 主界面菜单：电学台 / 运动学实验室 两个入口（此处所有 hooks 已执行完，提前返回安全）
+  if (entryView !== 'app') {
+    if (entryView === 'kin') return <KinematicsLab onHome={() => setEntryView('menu')} />
+  }
   if (entryView === 'menu') {
     return (
       <div className="menu">
@@ -1456,7 +1458,7 @@ export default function App() {
               </span>
               <span className="menu-arrow">→</span>
             </button>
-            <button className="menu-card" onClick={() => setKinOpen(true)}>
+            <button className="menu-card" onClick={() => setEntryView('kin')}>
               <span className="menu-icon" style={{ background: 'rgba(224,138,151,.15)' }}>
                 <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#e08a97" strokeWidth={2} strokeLinecap="round">
                   <path d="M3 20Q12 2 21 20" />
@@ -1472,7 +1474,6 @@ export default function App() {
           </div>
           <p className="menu-foot">72 项自动化测试 · 离线可运行 · 支持手机触屏</p>
         </div>
-        {kinOpen && <KinematicsLab onClose={() => setKinOpen(false)} />}
       </div>
     )
   }
@@ -1520,7 +1521,7 @@ export default function App() {
         ))}
         <div className="divider" />
         <button onClick={() => s.setDemoOpen(true)}><span className="dot" style={{ background: '#5e6ad2' }} />演示电路</button>
-        <button onClick={() => setKinOpen(true)}><span className="dot" style={{ background: '#4aa3a2' }} />运动学实验室 β</button>
+        <button onClick={() => setEntryView('kin')}><span className="dot" style={{ background: '#4aa3a2' }} />运动学实验室 β</button>
         <div className="pal-row">
           <button onClick={() => { if (confirm('清空画布上的全部元件和导线？')) s.clearAll() }}>
             <span className="dot" style={{ background: '#e08a97' }} />清空画布
@@ -2528,8 +2529,6 @@ export default function App() {
         </div>
       )}
       {/* 逻辑门选型窗：选完不关闭，可连续换类型放置 */}
-      {kinOpen && <KinematicsLab onClose={() => setKinOpen(false)} />}
-
       {s.gatePickerOpen && (
         <div className="dial-overlay" onClick={() => s.setGatePickerOpen(false)}>
           <div className="exp-picker" onClick={(e) => e.stopPropagation()}>

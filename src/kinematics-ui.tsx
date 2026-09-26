@@ -1,4 +1,5 @@
-// 运动学实验室（测试版）：双模式——抛体演示 / 自由沙盒。独立组件，仅依赖 solver/kinematics*，与电路模块零耦合
+// 运动学实验室（测试版）：独立全屏界面。双模式——抛体演示 / 自由沙盒
+// 独立组件，仅依赖 solver/kinematics*，与电路模块零耦合
 import { useEffect, useRef, useState } from 'react'
 import { apexHeight, apexTime, flightTime, positionAt, range, type ProjParams } from './solver/kinematics'
 import { kineticEnergy, makeBall, stepSandbox, type Ball, type SandboxParams } from './solver/kinematics-sandbox'
@@ -28,7 +29,7 @@ function SandboxView() {
 
   const SCALE = 18 // px per m
   const W = 42, H = 20 // 场地 m
-  const toPx = (x: number, y: number) => ({ px: 20 + x * SCALE, py: 70 + y * SCALE }) // 世界 y 向下为正（与引擎一致），地面=H
+  const toPx = (x: number, y: number) => ({ px: 20 + x * SCALE, py: 70 + y * SCALE }) // 世界 y 向下=重力向下
 
   useEffect(() => {
     if (!running) return
@@ -70,7 +71,7 @@ function SandboxView() {
   return (
     <>
       <svg
-        viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 10, border: '1px solid var(--border)', touchAction: 'none', cursor: 'crosshair' }}
+        viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 12, border: '1px solid var(--border)', touchAction: 'none', cursor: 'crosshair' }}
         onPointerDown={(e) => {
           const { wx, wy } = svgPoint(e)
           dragRef.current = { x: wx, y: wy, cx: wx, cy: wy }
@@ -147,7 +148,7 @@ function SandboxView() {
 }
 
 /** 抛体演示模式：单发解析解演示 */
-function ProjectileView({ onClose }: { onClose: () => void }) {
+function ProjectileView() {
   const [p, setP] = useState<ProjParams>({ v0: 20, angleDeg: 45, h0: 0, g: 9.8 })
   const [speed, setSpeed] = useState(0.5)
   const [running, setRunning] = useState(false)
@@ -197,7 +198,7 @@ function ProjectileView({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <svg viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 10, border: '1px solid var(--border)' }}>
+      <svg viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 12, border: '1px solid var(--border)' }}>
         <line x1={40} y1={400} x2={780} y2={400} stroke={ink} strokeWidth={2} />
         {[1, 2, 3, 4, 5, 6].map((i) => (
           <g key={i}>
@@ -228,7 +229,7 @@ function ProjectileView({ onClose }: { onClose: () => void }) {
           )
         })()}
       </svg>
-      <div className="exp-cards" style={{ marginTop: 10 }}>
+      <div className="exp-cards" style={{ marginTop: 12 }}>
         <div className="exp-card" style={{ cursor: 'default' }}>
           <strong>实时状态 t={st.t.toFixed(2)}s</strong>
           <span>x={st.x.toFixed(1)}m · y={st.y.toFixed(1)}m · vx={st.vx.toFixed(1)}m/s · vy={st.vy.toFixed(1)}m/s</span>
@@ -271,25 +272,30 @@ function ProjectileView({ onClose }: { onClose: () => void }) {
         水平方向匀速（vx 不变）、竖直方向匀加速（vy 每秒减 g）——两方向独立又同时进行，这就是抛体运动的全部。
         粉色箭头 = 速度矢量。试试互补角 30°/60° 射程一样，月球上射程约地球 6 倍。
       </p>
-      <button className="wide" onClick={onClose}>关闭</button>
     </>
   )
 }
 
-export function KinematicsLab({ onClose }: { onClose: () => void }) {
+export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const [mode, setMode] = useState<'throw' | 'sandbox'>('throw')
   return (
-    <div className="dial-overlay" onClick={onClose}>
-      <div className="exp-picker" style={{ maxWidth: 860, width: '92%' }} onClick={(e) => e.stopPropagation()}>
-        <div className="exp-picker-head">
-          <h2>运动学实验室（测试版）</h2>
-          <button className="icon-btn" onClick={onClose} title="关闭">×</button>
-        </div>
-        <div className="pal-row" style={{ marginBottom: 10 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--panel)', display: 'flex', flexDirection: 'column' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 22px', borderBottom: '1px solid var(--panel-line)' }}>
+        <h1 style={{ fontSize: 17, letterSpacing: 2, color: 'var(--ink)', margin: 0 }}>运动学实验室</h1>
+        <span className="menu-beta">β 测试版</span>
+        <div className="pal-row" style={{ marginLeft: 10 }}>
           <button className={mode === 'throw' ? 'active' : ''} onClick={() => setMode('throw')}>抛体演示</button>
           <button className={mode === 'sandbox' ? 'active' : ''} onClick={() => setMode('sandbox')}>自由沙盒</button>
         </div>
-        {mode === 'throw' ? <ProjectileView onClose={onClose} /> : <SandboxView />}
+        <span style={{ flex: 1 }} />
+        <button className="icon-btn" title="返回主页" onClick={onHome}>
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 11 12 4l8 7M6.5 9.5V20h11V9.5M10 20v-5h4v5" />
+          </svg>
+        </button>
+      </header>
+      <div style={{ flex: 1, width: 'min(920px, 96vw)', margin: '0 auto', padding: '18px 0 30px', display: 'flex', flexDirection: 'column' }}>
+        {mode === 'throw' ? <ProjectileView /> : <SandboxView />}
       </div>
     </div>
   )
