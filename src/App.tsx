@@ -63,7 +63,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, probeTips, probeDragTip, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown, onProbePointerDown }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -73,12 +73,9 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, probe
   onSwitchPointerDown?: (e: React.PointerEvent, c: Comp) => void
   onDialOpen?: (c: Comp) => void
   onPlatePointerDown?: (e: React.PointerEvent, c: Comp, which: 1 | 2) => void
-  onProbePointerDown?: (e: React.PointerEvent, c: Comp, lead: 'A' | 'B') => void
   ohmReading?: number
   rheoLabel?: string
   probeDv?: number | null // 表笔吸附时的电压读数（红笔端 − 黑笔端）
-  probeTips?: { a: { x: number; y: number }; b: { x: number; y: number } }
-  probeDragTip?: { lead: 'A' | 'B'; x: number; y: number }
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -536,28 +533,6 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, probe
           </text>
         )}
       </g>
-      {/* 常驻表笔（仅万用表）：黑/红两根，尖端拖到端子附近自动吸附 */}
-      {probeTips && (['A', 'B'] as const).map((lead) => {
-        const dragging = probeDragTip?.lead === lead
-        const tip = dragging && probeDragTip ? { x: probeDragTip.x, y: probeDragTip.y } : probeTips[lead === 'A' ? 'a' : 'b']
-        const lx = tip.x - c.x
-        const ly = tip.y - c.y
-        const ax = lead === 'A' ? -48 : 48
-        const ay = 10
-        const col = lead === 'A' ? '#3a3f4c' : '#d84a4a'
-        const mx = (ax + lx) / 2
-        const my = Math.max(ay, ly) + 26
-        return (
-          <g key={'probe' + lead}>
-            <path d={`M ${ax} ${ay} Q ${mx} ${my} ${lx} ${ly}`} fill="none" stroke={col} strokeWidth={2} strokeLinecap="round" />
-            <circle cx={lx} cy={ly} r={4.5} fill={col} stroke="#f2f4f8" strokeWidth={1.2} />
-            {!dragging && (
-              <circle cx={lx} cy={ly} r={10} fill="transparent" style={{ cursor: 'grab' }}
-                onPointerDown={(e) => { e.stopPropagation(); onProbePointerDown?.(e, c, lead) }} />
-            )}
-          </g>
-        )
-      })}
     </g>
   )
 }
@@ -1220,7 +1195,12 @@ export default function App() {
       const term = lead === 'A' ? c.pa : c.pb
       if (term) {
         const target = s.comps.find((k) => k.id === term.split(':')[0])
-        if (target) return terminalPos(target, term.split(':')[1] as 'a' | 'b')
+        if (target) {
+          const p = terminalPos(target, term.split(':')[1] as 'a' | 'b')
+          // 双表笔叠在同一端子时左右错开，红笔不压黑笔
+          if (c.pa && c.pa === c.pb) return { x: p.x + (lead === 'A' ? -6 : 6), y: p.y - 6 }
+          return p
+        }
       }
       return { x: c.x + (lead === 'A' ? -52 : 52), y: c.y + 26 }
     }
@@ -1430,10 +1410,7 @@ export default function App() {
                 onSwitchPointerDown={onSwitchPointerDown}
                 onDialOpen={(c) => { setDialFor(c.id); setDialPos(null) }}
                 onPlatePointerDown={onPlatePointerDown}
-                onProbePointerDown={onProbePointerDown}
                 probeDv={multiProbeDv(c)}
-                probeTips={multiProbeTips(c)}
-                probeDragTip={probeDrag && probeDrag.id === c.id ? { lead: probeDrag.lead, x: probeDrag.x, y: probeDrag.y } : undefined}
                 ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -1468,6 +1445,30 @@ export default function App() {
               })}
             </g>
           )
+          })}
+          {/* 万用表表笔层：全局最后绘制，永远在元件符号之上（防被后放置的元件盖住） */}
+          {s.comps.filter((c) => c.kind === 'multimeter').flatMap((mc) => {
+            const tips = multiProbeTips(mc)
+            if (!tips) return []
+            return (['A', 'B'] as const).map((lead) => {
+              const dragging = probeDrag?.id === mc.id && probeDrag.lead === lead
+              const tip = dragging && probeDrag ? { x: probeDrag.x, y: probeDrag.y } : (lead === 'A' ? tips.a : tips.b)
+              const ax = mc.x + (lead === 'A' ? -48 : 48)
+              const ay = mc.y + 10
+              const col = lead === 'A' ? '#3a3f4c' : '#d84a4a'
+              const mx = (ax + tip.x) / 2
+              const my = Math.max(ay, tip.y) + 26
+              return (
+                <g key={mc.id + 'probe' + lead}>
+                  <path d={`M ${ax} ${ay} Q ${mx} ${my} ${tip.x} ${tip.y}`} fill="none" stroke={col} strokeWidth={2} strokeLinecap="round" />
+                  <circle cx={tip.x} cy={tip.y} r={4.5} fill={col} stroke="#f2f4f8" strokeWidth={1.2} />
+                  {!dragging && (
+                    <circle cx={tip.x} cy={tip.y} r={10} fill="transparent" style={{ cursor: 'grab' }}
+                      onPointerDown={(e) => { e.stopPropagation(); onProbePointerDown(e, mc, lead) }} />
+                  )}
+                </g>
+              )
+            })
           })}
           </g>
         </svg>
