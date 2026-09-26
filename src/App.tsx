@@ -310,7 +310,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
           <path d="M -7 1 Q -3.5 -8 0 1 T 7 1" fill="none" stroke={stroke} strokeWidth={1.8} />
           <line x1={13} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
         </>
-      ))}
+      ))()}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
