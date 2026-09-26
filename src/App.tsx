@@ -103,7 +103,10 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
     if (kind === 'ACV' || kind === 'ACA') {
       if (multiRms == null) return '---'
       const lim = kind === 'ACV' ? 20 : 10
-      return multiRms > lim ? 'OL' : multiRms.toFixed(kind === 'ACV' ? 2 : 3)
+      if (multiRms > lim) return 'OL'
+      // 真数字表的末位跳动：RMS 值加 ±0.4% 抖动（引擎每帧重渲染，末位自然翻动）
+      const jitter = 1 + (Math.random() - 0.5) * 0.008
+      return (multiRms * jitter).toFixed(kind === 'ACV' ? 2 : 3)
     }
     if (kind === 'V') {
       const v = probeDv !== null && probeDv !== undefined ? probeDv : (solved?.dv ?? 0)
@@ -2194,8 +2197,10 @@ export default function App() {
           const rms = acRmsOf(c.id)
           const v = mode === 'DCV' ? (probedV ?? (solvedM?.dv ?? 0)) : mode === 'ACV' ? (rms ?? NaN) : mode === 'DCA' ? (solvedM?.dv ?? 0) / 0.01 : mode === 'ACA' ? (rms ?? NaN) : (result.ohm?.[c.id] ?? Infinity)
           const ol = (mode === 'DCV' && Math.abs(v) > 20) || (mode === 'DCA' && Math.abs(v) > 10) || ((mode === 'ACV' || mode === 'ACA') && rms != null && rms > (mode === 'ACV' ? 20 : 10))
+          // AC 档末位抖动（真数字表 RMS 读数的低位翻动）；OL/--- 判断用干净值
+          const dispV = rms != null && (mode === 'ACV' || mode === 'ACA') ? rms * (1 + (Math.random() - 0.5) * 0.008) : v
           const disp = mode === 'DCV' ? (ol ? 'OL' : v.toFixed(2)) : mode === 'DCA' ? (ol ? 'OL' : v.toFixed(3))
-            : mode === 'ACV' ? (rms == null ? '---' : ol ? 'OL' : v.toFixed(2)) : mode === 'ACA' ? (rms == null ? '---' : ol ? 'OL' : v.toFixed(3))
+            : mode === 'ACV' ? (rms == null ? '---' : ol ? 'OL' : dispV.toFixed(2)) : mode === 'ACA' ? (rms == null ? '---' : ol ? 'OL' : dispV.toFixed(3))
             : mode === 'OHM' ? fmtOhm(v) : ''
           const onKnob = (key: string) => s.updateParam(c.id, 'mode', key as typeof mode)
           const unitTxt = mode === 'OHM' ? '' : mode === 'OFF' ? '' : MULTI_SUPPORTED(mode) ? mode : ''
