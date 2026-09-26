@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve } from './solver/mna'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, type Comp, type CompKind, type MeterPosts } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, type Comp, type CompKind, type MeterPosts } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { THEME as T } from './theme'
 
@@ -17,22 +17,21 @@ function fmtOhm(r: number): string {
   return r.toFixed(2) + 'Ω'
 }
 
-// 万用表旋钮档位环（照真机排布）：数显=VC890D 九功能区，经典=MF47 十档
-// 本台只仿真 DCV/DCA/OHM；ACV/ACA/BUZZ/CAP/hFE 为真机档位占位（选中提示未模拟）
+// 万用表旋钮档位环（照真机排布）：数显=VC890D 九功能区，经典=MF47 十五档刻度环
+// 本台只仿真电压/电流/电阻档；ACV/ACA/BUZZ/CAP/hFE/V1000/×100/×10/×1/mA0.25 为真机档位占位（选中提示未模拟）
 const DIGI_KNOB = [
   { key: 'OFF', label: 'OFF' }, { key: 'DCV', label: 'DCV' }, { key: 'ACV', label: 'ACV' },
   { key: 'DCA', label: 'DCA' }, { key: 'ACA', label: 'ACA' }, { key: 'BUZZ', label: '蜂鸣' },
   { key: 'OHM', label: 'Ω' }, { key: 'CAP', label: 'CAP' }, { key: 'hFE', label: 'hFE' },
 ]
 const CLASSIC_KNOB = [
-  { key: 'OFF', label: 'OFF' }, { key: 'V250', label: 'V250' }, { key: 'V50', label: 'V50' },
-  { key: 'V10', label: 'V10' }, { key: 'V2.5', label: 'V2.5' }, { key: 'mA500', label: 'mA500' },
-  { key: 'mA50', label: 'mA50' }, { key: 'mA5', label: 'mA5' }, { key: 'mA0.5', label: 'mA0.5' },
-  { key: 'OHM', label: 'Ω' },
+  { key: 'OFF', label: 'OFF' }, { key: 'V2.5', label: '2.5' }, { key: 'V10', label: '10' },
+  { key: 'V50', label: '50' }, { key: 'V250', label: '250' }, { key: 'V1000', label: '1000' },
+  { key: 'OHM1k', label: '×1k' }, { key: 'OHM100', label: '×100' }, { key: 'OHM10', label: '×10' }, { key: 'OHM1', label: '×1' },
+  { key: 'mA500', label: '500' }, { key: 'mA50', label: '50' }, { key: 'mA5', label: '5' }, { key: 'mA0.25', label: '0.25' },
 ]
-const V_RANGES = [2.5, 10, 50, 250]
-const A_RANGES = [0.5, 0.05, 0.005, 0.0005]
-const MULTI_SUPPORTED = (m: string) => m === 'DCV' || m === 'DCA' || m === 'OHM'
+const MULTI_SUPPORTED = (m: string) => MULTI_KIND(m) !== null
+const MULTI_KIND = (m: string) => multiKindOf(m as never)
 
 const KIND_NAME: Record<CompKind, string> = {
   battery: '电源',
@@ -87,18 +86,19 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   const isMulti = c.kind === 'multimeter'
   // 数字读数（数显/经典共用画布文字）：V 带符号 / A 带符号（经典按内阻换算）/ Ω 走零源辅助解，超量程显示 OL
   const multiLcd = isMulti ? (() => {
-    if (c.mode === 'DCV') {
+    const kind = multiKindOf(c.mode)
+    if (!kind) return '' // OFF / 未模拟档：LCD 熄灭
+    const range = multiRangeOf(c.mode, c.range)
+    if (kind === 'V') {
       const v = solved?.dv ?? 0
-      return Math.abs(v) > (c.style === 'classic' ? (c.range ?? 2.5) : 20) ? 'OL' : v.toFixed(2)
+      return Math.abs(v) > (c.style === 'classic' ? (range ?? 2.5) : 20) ? 'OL' : v.toFixed(2)
     }
-    if (c.mode === 'DCA') {
-      const i = c.style === 'classic'
-        ? (solved?.dv ?? 0) / (c.ideal ? 1e-3 : Math.max(0.06 / (c.range ?? 0.5), 1e-3))
-        : (solved?.dv ?? 0) / 0.01
-      return Math.abs(i) > (c.style === 'classic' ? (c.range ?? 0.5) : 10) ? 'OL' : i.toFixed(3)
+    if (kind === 'A') {
+      const rEff = c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range ?? 0.5, 1e-4), 1e-3)
+      const i = c.style === 'classic' ? (solved?.dv ?? 0) / rEff : (solved?.dv ?? 0) / 0.01
+      return Math.abs(i) > (c.style === 'classic' ? (range ?? 0.5) : 10) ? 'OL' : i.toFixed(3)
     }
-    if (c.mode === 'OHM') return fmtOhm(ohmReading ?? Infinity)
-    return '' // OFF / 未模拟档：LCD 熄灭
+    return fmtOhm(ohmReading ?? Infinity) // Ω
   })() : ''
   const isLed = c.kind === 'led'
   const ledLit = isLed && (solved?.current ?? 0) > 0.002
@@ -170,17 +170,18 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
       {isMulti && (c.style === 'classic' ? (() => {
         // 经典款（MF47 式）：矩形机身 + 上部表盘窗（指针随读数偏转）+ 下部档位旋钮 + 调零螺丝
         const mode = c.mode
-        const range = c.range ?? (mode === 'DCV' ? 2.5 : 0.5)
-        const isO = mode === 'OHM'
-        const rEff = mode === 'DCV'
+        const kind = multiKindOf(mode)
+        const range = multiRangeOf(mode, c.range) ?? 0
+        const isO = kind === 'Ω'
+        const rEff = kind === 'V'
           ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
           : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
-        const sVal = isO || !MULTI_SUPPORTED(mode) ? 0 : mode === 'DCV' ? (solved?.dv ?? 0) : (solved?.dv ?? 0) / rEff
+        const sVal = !kind || isO ? 0 : kind === 'V' ? (solved?.dv ?? 0) : (solved?.dv ?? 0) / rEff
         const val = isO ? (ohmReading ?? Infinity) : Math.abs(sVal)
-        const frac = Math.max(-0.14, Math.min(1.12, isO ? 10 / (10 + val) : sVal / range))
+        const frac = Math.max(-0.14, Math.min(1.12, isO ? 10 / (10 + val) : range ? sVal / range : 0))
         const nAng = ((-50 + 100 * frac) * Math.PI) / 180
-        const knobIdx = mode === 'OFF' ? 0 : mode === 'OHM' ? 9 : mode === 'DCV' ? 1 + Math.max(0, V_RANGES.indexOf(range)) : 5 + Math.max(0, A_RANGES.indexOf(range))
-        const kAng = ((-135 + 270 * knobIdx / 9) * Math.PI) / 180
+        const knobIdx = Math.max(0, CLASSIC_KNOB.findIndex((p) => p.key === mode))
+        const kAng = ((-135 + 270 * knobIdx / (CLASSIC_KNOB.length - 1)) * Math.PI) / 180
         return (
           <>
             <text
@@ -436,7 +437,11 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
         : !MULTI_SUPPORTED(c.mode) ? `${c.mode} · 本台未模拟`
         : multiLcd === 'OL' ? '⚠ 超量程，换档位更大的测量对象'
         : c.style === 'classic'
-        ? `经典款 · ${c.mode === 'OHM' ? 'Ω 档' : c.mode === 'DCV' ? `DCV ${c.range}V` : `DCmA ${(c.range ?? 0) * 1000}mA`}`
+        ? (() => {
+            const k = multiKindOf(c.mode)
+            const rg = multiRangeOf(c.mode, c.range)
+            return `经典款 · ${k === 'Ω' ? 'Ω 档' : k === 'V' ? `DCV ${rg}V` : k === 'A' ? `DCmA ${(rg ?? 0) * 1000}mA` : c.mode}`
+          })()
         : `数显款 · ${c.mode} 档`)
     : isGalvo ? `${(Math.abs(galvoI) * 1000).toFixed(1)}mA${galvoPegged ? ' ⚠超量程' : ''}`
     : c.kind === 'spdt' ? (c.pos === 0 ? '断开（中位）' : `公共端接 触点${c.pos}`)
@@ -532,7 +537,7 @@ function Needle({ target, CX, CY, R }: { target: number; CX: number; CY: number;
 }
 
 /** 档位旋钮（棘轮款）：拖动指针换档，档位间有定位"咔哒"感；也可点刻度字直接跳档 */
-function ModeKnob({ positions, value, onChange }: { positions: { key: string; label: string }[]; value: string; onChange: (key: string) => void }) {
+function ModeKnob({ positions, value, onChange, dark }: { positions: { key: string; label: string }[]; value: string; onChange: (key: string) => void; dark?: boolean }) {
   const ref = useRef<SVGSVGElement | null>(null)
   const dragging = useRef(false)
   const idx = Math.max(0, positions.findIndex((p) => p.key === value))
@@ -587,11 +592,11 @@ function ModeKnob({ positions, value, onChange }: { positions: { key: string; la
       <g style={{ transform: `rotate(${angOf(idx)}deg)`, transformOrigin: '65px 52px', transition: dragging.current ? 'none' : 'transform 0.09s ease-out' }}>
         {Array.from({ length: 12 }).map((_, i) => {
           const a = (i * 30 * Math.PI) / 180
-          return <line key={i} x1={65 + Math.sin(a) * 19} y1={52 - Math.cos(a) * 19} x2={65 + Math.sin(a) * 23.5} y2={52 - Math.cos(a) * 23.5} stroke="#aab2c4" strokeWidth={2} />
+          return <line key={i} x1={65 + Math.sin(a) * 19} y1={52 - Math.cos(a) * 19} x2={65 + Math.sin(a) * 23.5} y2={52 - Math.cos(a) * 23.5} stroke={dark ? '#4a5164' : '#aab2c4'} strokeWidth={2} />
         })}
-        <circle cx={65} cy={52} r={22} fill="#e8ebf2" stroke="#c9d2e0" strokeWidth={2} />
-        <line x1={65} y1={52} x2={65} y2={35} stroke="#c0392b" strokeWidth={3.5} strokeLinecap="round" />
-        <circle cx={65} cy={52} r={3.5} fill="#c0392b" />
+        <circle cx={65} cy={52} r={22} fill={dark ? '#2f3540' : '#e8ebf2'} stroke={dark ? '#1e232e' : '#c9d2e0'} strokeWidth={2} />
+        <line x1={65} y1={52} x2={65} y2={35} stroke={dark ? '#f2f4f8' : '#c0392b'} strokeWidth={3.5} strokeLinecap="round" />
+        <circle cx={65} cy={52} r={3.5} fill={dark ? '#f2f4f8' : '#c0392b'} />
       </g>
     </svg>
   )
@@ -1348,27 +1353,19 @@ export default function App() {
               const classic = selected.style === 'classic'
               const live = s.comps.some((k) => k.kind === 'battery' && k.emf > 0)
               const mode = selected.mode
-              const knobKey = classic
-                ? (mode === 'OHM' ? 'OHM' : mode === 'OFF' ? 'OFF' : mode === 'DCV' ? `V${V_RANGES.includes(selected.range ?? 2.5) ? (selected.range as number) : 2.5}` : `mA${(A_RANGES.includes(selected.range ?? 0.5) ? (selected.range as number) : 0.5) * 1000}`)
+              const legacyKey = classic
+                ? (mode === 'DCV' ? `V${V_RANGES.includes(selected.range ?? 2.5) ? (selected.range as number) : 2.5}`
+                  : mode === 'DCA' ? `mA${(A_RANGES.includes(selected.range ?? 0.5) ? (selected.range as number) : 0.5) * 1000}`
+                  : mode)
                 : mode
-              const onKnob = (key: string) => {
-                if (!classic) { s.updateParam(selected.id, 'mode', key as typeof mode); return }
-                if (key === 'OFF' || key === 'OHM') { s.updateParam(selected.id, 'mode', key); return }
-                if (key.startsWith('V')) { s.updateParam(selected.id, 'mode', 'DCV'); s.updateParam(selected.id, 'range', Number(key.slice(1))); return }
-                s.updateParam(selected.id, 'mode', 'DCA')
-                s.updateParam(selected.id, 'range', Number(key.slice(2)) / 1000)
-              }
+              const knobKey = CLASSIC_KNOB.some((p) => p.key === legacyKey) || DIGI_KNOB.some((p) => p.key === legacyKey) ? legacyKey : 'OFF'
+              const onKnob = (key: string) => s.updateParam(selected.id, 'mode', key as typeof mode)
               return (
                 <>
-                  <button className="wide" onClick={() => {
-                    // 切经典款时把量程归一到 MF47 档位（旧档 3/15 → 2.5）
-                    if (!classic && selected.mode === 'DCV' && !V_RANGES.includes(selected.range ?? 2.5)) s.updateParam(selected.id, 'range', 2.5)
-                    if (!classic && selected.mode === 'DCA' && !A_RANGES.includes(selected.range ?? 0.5)) s.updateParam(selected.id, 'range', 0.5)
-                    s.updateParam(selected.id, 'style', classic ? 'digital' : 'classic')
-                  }}>
+                  <button className="wide" onClick={() => s.updateParam(selected.id, 'style', classic ? 'digital' : 'classic')}>
                     {classic ? '切换为数显款（LCD 读数）' : '切换为经典款（指针表盘）'}
                   </button>
-                  <ModeKnob positions={classic ? CLASSIC_KNOB : DIGI_KNOB} value={knobKey} onChange={onKnob} />
+                  <ModeKnob dark={classic} positions={classic ? CLASSIC_KNOB : DIGI_KNOB} value={knobKey} onChange={onKnob} />
                   <p className="warn" style={{ margin: 0 }}>
                     {mode === 'OFF'
                       ? '已关机：拖动旋钮到 DCV/DCA/Ω 任一测量档开始测量（真实万用表用完要关档省电）。'
@@ -1469,25 +1466,25 @@ export default function App() {
             return { x: CX + Math.sin(deg) * r, y: CY - Math.cos(deg) * r }
           }
           if (classic) {
-            // 经典指针款表盘（MF47 式）：0~250 主刻度（满偏=当前量程）+ Ω 非线性反向刻度；底部档位旋钮
-            const isV = mode === 'DCV'
-            const isA = mode === 'DCA'
-            const isO = mode === 'OHM'
-            const supported = MULTI_SUPPORTED(mode)
-            const range = isV
-              ? (V_RANGES.includes(c.range ?? 2.5) ? c.range! : 2.5)
-              : isA ? (A_RANGES.includes(c.range ?? 0.5) ? c.range! : 0.5)
-              : 0
+            // 经典指针款 = MF47 面板复刻：多弧刻度表盘窗（Ω 反向弧 + 0~250 主刻度 + 红色 ACV 装饰行）
+            // + 镜面弧 + A-V-Ω 铭牌 + 底部黑色大旋钮（白指针、档位环同真机十五档）
+            const kind = multiKindOf(mode)
+            const isV = kind === 'V'
+            const isA = kind === 'A'
+            const isO = kind === 'Ω'
+            const supported = kind !== null
+            const range = multiRangeOf(mode, c.range) ?? 0
             const rEff = isV
               ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
               : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
             const sVal = !supported || isO ? 0 : isV ? (solvedM?.dv ?? 0) : (solvedM?.dv ?? 0) / rEff
             const val = isO ? (result.ohm?.[c.id] ?? Infinity) : Math.abs(sVal)
             const over = supported && !isO && Math.abs(sVal) > range + 1e-9
-            const needleTarget = !supported ? 0 : isO ? 10 / (10 + val) : sVal / range
+            const needleTarget = !supported ? 0 : isO ? 10 / (10 + val) : range ? sVal / range : 0
             const ohmTicks = [0, 2, 5, 10, 20, 50, 200, 1e9].map((r) => ({ r, f: 10 / (10 + r), label: r >= 1e9 ? '∞' : String(r) }))
             const numFs = [0, 0.2, 0.4, 0.6, 0.8, 1]
             const hiNums = [0, 50, 100, 150, 200, 250]
+            const acvNums = ['10', '50', '250', '1000']
             const loNums = [0, 10, 20, 30, 40, 50]
             const ticks: { f: number; o: { x: number; y: number }; i: { x: number; y: number }; major: boolean; lbl?: string }[] = []
             if (isO) {
@@ -1496,17 +1493,13 @@ export default function App() {
               for (let i = 0; i <= 30; i++) {
                 const f = i / 30
                 const major = i % 5 === 0
-                const mid = i % 5 === 0
-                ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : mid ? 9 : 5)), major, lbl: undefined })
+                ticks.push({ f, o: dir(f, R), i: dir(f, R - (major ? 13 : i % 5 === 0 ? 9 : 5)), major, lbl: undefined })
               }
             }
-            const knobKey = mode === 'OFF' ? 'OFF' : mode === 'OHM' ? 'OHM' : mode === 'DCV' ? `V${range}` : `mA${range * 1000}`
-            const onKnob = (key: string) => {
-              if (key === 'OFF' || key === 'OHM') { s.updateParam(c.id, 'mode', key); return }
-              if (key.startsWith('V')) { s.updateParam(c.id, 'mode', 'DCV'); s.updateParam(c.id, 'range', Number(key.slice(1))); return }
-              s.updateParam(c.id, 'mode', 'DCA')
-              s.updateParam(c.id, 'range', Number(key.slice(2)) / 1000)
-            }
+            // 档位键 → 旋钮位置（旧存档 DCV/DCA+range 归一到最近 MF47 档）
+            const legacyKey = mode === 'DCV' ? `V${V_RANGES.includes(c.range ?? 2.5) ? (c.range as number) : 2.5}` : mode === 'DCA' ? `mA${(A_RANGES.includes(c.range ?? 0.5) ? (c.range as number) : 0.5) * 1000}` : mode
+            const knobKey = CLASSIC_KNOB.some((p) => p.key === legacyKey) ? legacyKey : 'OFF'
+            const onKnob = (key: string) => s.updateParam(c.id, 'mode', key as typeof mode)
             return (
               <div className="dial-float" style={dialPos ? { left: dialPos.x, top: dialPos.y, right: 'auto' } : undefined}>
                 <div
@@ -1527,12 +1520,14 @@ export default function App() {
                   }}
                   onPointerUp={() => { dialDragRef.current = null }}
                 >
-                  <h3>万用表（经典款）· {mode === 'OFF' ? 'OFF（关机）' : mode === 'OHM' ? 'Ω 档（R×1k，断电测电阻）' : mode === 'DCV' ? `DCV ${range}V` : `DCmA ${range * 1000}mA`}</h3>
+                  <h3>万用表（经典款）· {mode === 'OFF' ? 'OFF（关机）' : isO ? 'Ω 档（断电测电阻）' : isV ? `直流电压 ${range}V` : isA ? `直流电流 ${range * 1000}mA` : `${mode}（未模拟）`}</h3>
                   <button className="icon-btn" title="关闭" onClick={() => setDialFor(null)}>×</button>
                 </div>
                 <div className="dial-body">
-                  <svg width={290} height={168} viewBox="0 0 280 168">
-                    <rect x={6} y={2} width={268} height={164} rx={10} fill="#f7f8fa" stroke="#c9d2e0" />
+                  <svg width={300} height={196} viewBox="0 0 290 196">
+                    <rect x={4} y={2} width={282} height={192} rx={10} fill="#f5f2e9" stroke="#b9ab8d" />
+                    {/* 镜面弧（防视差） */}
+                    <path d={`M ${dir(0.02, R + 4).x} ${dir(0.02, R + 4).y} Q ${dir(0.5, R + 22).x} ${dir(0.5, R + 22).y - 6} ${dir(0.98, R + 4).x} ${dir(0.98, R + 4).y}`} fill="none" stroke="#cfe0ea" strokeWidth={5} opacity={0.6} />
                     {ticks.map((t, i) => (
                       <g key={i}>
                         <line x1={t.o.x} y1={t.o.y} x2={t.i.x} y2={t.i.y} stroke="#2a3140" strokeWidth={t.major ? 2 : 1} />
@@ -1544,21 +1539,23 @@ export default function App() {
                     {!isO && numFs.map((f, i) => (
                       <g key={'n' + i}>
                         <text x={dir(f, R - 26).x} y={dir(f, R - 26).y} textAnchor="middle" fontSize={11} fontWeight={700} fill="#2a3140">{hiNums[i]}</text>
-                        <text x={dir(f, R - 46).x} y={dir(f, R - 46).y} textAnchor="middle" fontSize={9} fontWeight={400} fill="#8b93a7">{loNums[i]}</text>
+                        <text x={dir(f, R - 44).x} y={dir(f, R - 44).y} textAnchor="middle" fontSize={9} fontWeight={400} fill="#c0392b">{acvNums[i] ?? ''}</text>
+                        <text x={dir(f, R - 60).x} y={dir(f, R - 60).y} textAnchor="middle" fontSize={9} fontWeight={400} fill="#8b93a7">{loNums[i]}</text>
                       </g>
                     ))}
                     <Needle target={needleTarget} CX={CX} CY={CY} R={R} />
-                    <text x={CX} y={CY - 26} textAnchor="middle" fontSize={14} fontWeight={700} fill="#2a3140">{isO ? 'Ω' : 'DCV/DCA'}</text>
+                    <text x={CX} y={CY - 30} textAnchor="middle" fontSize={13} fontWeight={700} fill="#2a3140">A-V-Ω</text>
+                    <text x={CX} y={CY - 15} textAnchor="middle" fontSize={9} fill="#b9ab8d">MF-47 型 · 中国制造</text>
                   </svg>
                   <div className="dial-rows">
                     {mode === 'OFF' ? (
-                      <span>已关机：旋到任一测量档开始测量。</span>
+                      <span>已关机：拖动旋钮到任一测量档开始测量。</span>
                     ) : !supported ? (
-                      <span>⚠ {mode} 档为真机档位，本实验台暂未模拟（交流/蜂鸣/电容/hFE）——旋到 DCV/DCA/Ω 测量。</span>
+                      <span>⚠ {mode} 档为真机档位，本实验台暂未模拟（交流/扩展量程）——旋到 DCV/DCA/Ω 测量。</span>
                     ) : isO ? (
                       <>
                         <span>读数：{fmtOhm(val)}</span>
-                        <span>刻度不均匀且反向：0Ω 在右端，∞ 在左端（中值 10Ω）</span>
+                        <span>Ω 刻度非线性反向：0Ω 在右端，∞ 在左端（R×1k）</span>
                       </>
                     ) : isV ? (
                       <>
@@ -1572,17 +1569,17 @@ export default function App() {
                       </>
                     )}
                   </div>
-                  <ModeKnob positions={CLASSIC_KNOB} value={knobKey} onChange={onKnob} />
+                  <ModeKnob dark positions={CLASSIC_KNOB} value={knobKey} onChange={onKnob} />
                   <p className="dial-hint">
                     {mode === 'OFF'
                       ? '已关机：拖动旋钮到任一测量档开始测量。'
                       : !supported
-                      ? '该档位未模拟，LCD/指针无读数。'
+                      ? '该档位未模拟，指针无读数。'
                       : isO
                       ? '断电测电阻：读数 = 两端间等效电阻（电源置零）。' + (live ? '⚠ 电路带电——测单个元件请断开一端。' : '') + (val >= 1e7 ? ' 当前两端断路（∞）。' : '')
                       : over
                       ? '⚠ 超量程：指针打满，真实电表可能被烧坏——旋到更大量程档'
-                      : '拖动旋钮换档（棘轮定位），也可点刻度字直接跳档。显示负值 = 表笔接反（指针反偏）。'}
+                      : '拖动黑色旋钮换档（棘轮定位），也可点刻度字直接跳档。显示负值 = 表笔接反（指针反偏）。'}
                   </p>
                   <div className="dial-val" style={over ? { color: 'var(--danger)' } : undefined}>
                     {mode === 'OFF' || !supported ? '--' : isO ? fmtOhm(val) : (over ? '⚠ 超量程' : isV ? `${sVal.toFixed(2)}V` : `${(sVal * 1000).toFixed(1)}mA`)}

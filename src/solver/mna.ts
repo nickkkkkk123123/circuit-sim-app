@@ -1,7 +1,7 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
-import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf } from './types'
+import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
@@ -215,18 +215,18 @@ export function solve(circuit: Circuit): SolveResult {
         addRes(c.id, 'ohmmeter', na, nb, 1e9)
         break
       case 'multimeter': {
-        // 只有 DCV/DCA/OHM 三档参与仿真（数显：V=10MΩ 并联、A=0.01Ω 串联；经典：内阻随量程缩放）；
-        // OFF/ACV/ACA/BUZZ/CAP/hFE = 开路（未模拟档无读数；Ω 读数走零源辅助解）
-        const m = c.mode
-        if (m !== 'DCV' && m !== 'DCA' && m !== 'OHM') { addRes(c.id, 'multimeter', na, nb, 1e9); break }
-        if (m === 'OHM') { addRes(c.id, 'multimeter', na, nb, 1e9); break }
+        // 只有电压/电流/电阻三档参与仿真（数显：V=10MΩ 并联、A=0.01Ω 串联；经典：内阻随量程缩放）；
+        // OFF/AC/蜂鸣/CAP/hFE/未支持量程 = 开路（未模拟档无读数；Ω 读数走零源辅助解）
+        const kind = multiKindOf(c.mode)
+        if (!kind || kind === 'Ω') { addRes(c.id, 'multimeter', na, nb, 1e9); break }
+        const range = multiRangeOf(c.mode, c.range) ?? 0
         if (c.style === 'classic') {
-          const r = m === 'DCV'
-            ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * (c.range ?? 2.5) / 2.5, 1))
-            : (c.ideal ? 1e-3 : Math.max(0.06 / (c.range ?? 0.5), 1e-3))
+          const r = kind === 'V'
+            ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
+            : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
           addRes(c.id, 'multimeter', na, nb, r)
         } else {
-          addRes(c.id, 'multimeter', na, nb, m === 'DCV' ? 1e7 : 0.01)
+          addRes(c.id, 'multimeter', na, nb, kind === 'V' ? 1e7 : 0.01)
         }
         break
       }
@@ -325,7 +325,7 @@ export function solve(circuit: Circuit): SolveResult {
 
   // 欧姆表零源辅助求解：电池电动势置零（退化为内阻）、欧姆表本体开路，
   // 向表笔注入 1A 测试电流 → 两端电压差 = 看进去的等效电阻（戴维南电阻）
-  const ohms = comps.filter((c) => c.kind === 'ohmmeter' || (c.kind === 'multimeter' && c.mode === 'OHM'))
+  const ohms = comps.filter((c) => c.kind === 'ohmmeter' || (c.kind === 'multimeter' && multiKindOf(c.mode) === 'Ω'))
   let ohm: Record<string, number> | undefined
   if (ohms.length) {
     ohm = {}

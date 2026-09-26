@@ -89,13 +89,41 @@ export interface Ohmmeter extends BaseComp {
 
 export interface Multimeter extends BaseComp {
   kind: 'multimeter'
-  // 档位（照真机旋钮）：OFF=关机；DCV=直流电压（并联跨接）；DCA=直流电流（串联）；OHM=电阻（断电测，读戴维南电阻）
-  // ACV/ACA/BUZZ/CAP/hFE=真机有但本实验台未模拟的档（选中呈开路、无读数）
-  mode: 'OFF' | 'DCV' | 'ACV' | 'DCA' | 'ACA' | 'BUZZ' | 'OHM' | 'CAP' | 'hFE'
+  // 档位 = 旋钮刻度键（照 MF47 实物）：DCV/DCA/OHM 为数显款三键（配 range）；经典款直接存刻度键
+  // V2.5/V10/V50/V250、mA500/mA50/mA5、OHM(=R×1k) 参与仿真；OFF/ACV/ACA/BUZZ/CAP/hFE/V1000/OHM100/OHM10/OHM1/mA0.25 为真机占位档（开路无读数）
+  mode: 'OFF' | 'DCV' | 'ACV' | 'DCA' | 'ACA' | 'BUZZ' | 'OHM' | 'CAP' | 'hFE' | 'V2.5' | 'V10' | 'V50' | 'V250' | 'V1000' | 'OHM1k' | 'OHM100' | 'OHM10' | 'OHM1' | 'mA500' | 'mA50' | 'mA5' | 'mA0.25'
   style?: 'digital' | 'classic' // 数显款（缺省，LCD+侧栏旋钮）/ 经典款（指针表盘+档位旋钮）
-  range?: number // 经典款量程：DCV 2.5|10|50|250 V；DCA 0.5|0.05|0.005|0.0005 A（数显款自动量程不用）
-  r?: number // 经典款实际内阻基准（DCV 档 3000Ω@2.5V 基准随量程缩放 / DCA 档 0.06Ω·A/range）
+  range?: number // 数显款 DCV/DCA 的量程（V 或 A）；经典款档位直接存 mode，不用此字段
+  r?: number // 经典款实际内阻基准（V 档 3000Ω@2.5V 随量程缩放 / A 档 0.06Ω·A/range）
   ideal?: boolean // 经典款理想表（内阻 ∞/0）
+}
+
+// 万用表量程表（MF47 实物数值）
+export const V_RANGES = [2.5, 10, 50, 250]
+export const A_RANGES = [0.5, 0.05, 0.005]
+
+/** 万用表当前档位的测量类型（V/A/Ω；占位档返回 null） */
+export function multiKindOf(m: Multimeter['mode']): 'V' | 'A' | 'Ω' | null {
+  if (m === 'OHM') return 'Ω'
+  if (m === 'DCV' || m.startsWith('V')) return 'V'
+  if (m === 'DCA' || m.startsWith('mA')) return 'A'
+  return null
+}
+
+/** 万用表当前档位的仿真量程（V 或 A；占位档/OFF 返回 null） */
+export function multiRangeOf(m: Multimeter['mode'], stored?: number): number | null {
+  switch (m) {
+    case 'DCV': return V_RANGES.includes(stored ?? 2.5) ? (stored as number) : 2.5
+    case 'V2.5': return 2.5
+    case 'V10': return 10
+    case 'V50': return 50
+    case 'V250': return 250
+    case 'DCA': return A_RANGES.includes(stored ?? 0.5) ? (stored as number) : 0.5
+    case 'mA500': return 0.5
+    case 'mA50': return 0.05
+    case 'mA5': return 0.005
+    default: return null
+  }
 }
 
 export interface Spdt extends BaseComp {
