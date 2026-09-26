@@ -334,3 +334,40 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 
 /* 拖动中的表笔线（全屏覆盖，pointer-events 穿透） */
 .dial-cables { position: fixed; inset: 0; z-index: 55; pointer-events: none; }
+
+/* ── 主界面菜单（电学实验室）── */
+.menu { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; background: var(--panel); }
+.menu-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 25%, rgba(94, 106, 210, .16), transparent 42%),
+    radial-gradient(circle at 82% 75%, rgba(224, 138, 151, .10), transparent 45%),
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: auto, auto, 46px 46px, 46px 46px;
+  opacity: .55;
+  mask-image: radial-gradient(circle at 50% 45%, #000 30%, transparent 78%);
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 30%, transparent 78%);
+}
+.menu-body { position: relative; text-align: center; padding: 48px 20px; width: min(640px, 94vw); }
+.menu-badge { display: inline-block; font-size: 11px; letter-spacing: 3px; color: var(--accent-soft); border: 1px solid var(--border); border-radius: 999px; padding: 5px 16px; margin: 0 0 6px; }
+.menu-title { font-size: clamp(46px, 9vw, 78px); letter-spacing: 12px; text-indent: 12px; margin: 14px 0 8px; color: var(--ink); font-weight: 800; line-height: 1.1; }
+.menu-sub { color: var(--muted); margin: 0 0 40px; font-size: 14px; }
+.menu-cards { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.menu-card {
+  display: flex; align-items: center; gap: 16px; padding: 18px 22px;
+  border-radius: 14px; border: 1px solid var(--border); background: var(--panel-raise);
+  cursor: pointer; color: var(--ink); font: inherit;
+  transition: transform .16s, border-color .16s, box-shadow .16s;
+}
+.menu-card:hover { transform: translateY(-2px); border-color: var(--accent-soft); box-shadow: 0 10px 28px rgba(0, 0, 0, .28); }
+.menu-card:active { transform: scale(.99); }
+.menu-icon { width: 42px; height: 42px; flex: none; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: rgba(94, 106, 210, .16); }
+.menu-card-txt { display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.menu-card-txt strong { font-size: 17px; color: var(--ink); }
+.menu-card-txt strong small { margin-left: 10px; font-size: 12px; color: var(--muted); font-weight: 400; letter-spacing: 1px; }
+.menu-card-txt span { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.menu-arrow { margin-left: auto; color: var(--muted); font-size: 18px; transition: transform .16s, color .16s; }
+.menu-card:hover .menu-arrow { transform: translateX(5px); color: var(--accent-soft); }
+.menu-beta { color: #e08a97; font-style: normal; font-size: 13px; vertical-align: super; margin-left: 2px; }
+.menu-foot { margin-top: 34px; font-size: 12px; color: var(--muted); letter-spacing: 1.5px; }

@@ -1436,14 +1436,41 @@ export default function App() {
   // 主界面菜单：电学台 / 运动学实验室 两个入口（此处所有 hooks 已执行完，提前返回安全）
   if (entryView === 'menu') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 26, background: 'var(--panel)' }}>
-        <h1 style={{ fontSize: 44, letterSpacing: 6, color: 'var(--ink)', margin: 0 }}>电学实验室</h1>
-        <p style={{ color: 'var(--muted, #889)', margin: 0 }}>虚拟物理实验台 · MNA 电路求解 + 抛体与碰撞引擎</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: 300, marginTop: 10 }}>
-          <button style={{ fontSize: 18, padding: '14px 0', letterSpacing: 8 }} onClick={() => setEntryView('app')}>开 始</button>
-          <button style={{ fontSize: 18, padding: '14px 0' }} onClick={() => setKinOpen(true)}>运动学实验室 β</button>
+      <div className="menu">
+        <div className="menu-bg" aria-hidden />
+        <div className="menu-body">
+          <p className="menu-badge">虚拟物理实验台 · MNA SOLVER</p>
+          <h1 className="menu-title">电学实验室</h1>
+          <p className="menu-sub">从欧姆定律到数字电路——把电流看见，把计算点亮</p>
+          <div className="menu-cards">
+            <button className="menu-card" onClick={() => setEntryView('app')}>
+              <span className="menu-icon">
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#7b86e0" strokeWidth={2} strokeLinejoin="round">
+                  <path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H13L13 2Z" />
+                </svg>
+              </span>
+              <span className="menu-card-txt">
+                <strong>开 始<small>电路实验台</small></strong>
+                <span>16 类元件 · 7 组实验预设 · 万用表 · 数字电路</span>
+              </span>
+              <span className="menu-arrow">→</span>
+            </button>
+            <button className="menu-card" onClick={() => setKinOpen(true)}>
+              <span className="menu-icon" style={{ background: 'rgba(224,138,151,.15)' }}>
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#e08a97" strokeWidth={2} strokeLinecap="round">
+                  <path d="M3 20Q12 2 21 20" />
+                  <circle cx={21} cy={20} r={1.6} fill="#e08a97" stroke="none" />
+                </svg>
+              </span>
+              <span className="menu-card-txt">
+                <strong>运动学实验室 <em className="menu-beta">β</em></strong>
+                <span>抛体运动 · 自由沙盒 · 冲量碰撞引擎</span>
+              </span>
+              <span className="menu-arrow">→</span>
+            </button>
+          </div>
+          <p className="menu-foot">72 项自动化测试 · 离线可运行 · 支持手机触屏</p>
         </div>
-        <p style={{ color: 'var(--muted, #889)', fontSize: 12, margin: 0 }}>16 类电学元件 · 7 组实验预设 · 数字电路 · 万用表 · 抛体与沙盒（测试版）</p>
       </div>
     )
   }
