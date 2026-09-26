@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led' | 'capacitor' | 'acsource'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led' | 'capacitor' | 'acsource' | 'relay' | 'gate'
 
 export interface BaseComp {
   id: string
@@ -161,6 +161,24 @@ export interface ACSource extends BaseComp {
   r: number // 内阻 Ω（0=理想，求解器钳位 1mΩ）
 }
 
+// 继电器：线圈 a-b（电流超阈值→吸合），触点 COM(c)-NO(p) 常开 / COM(c)-NC(d) 常闭
+export interface Relay extends BaseComp {
+  kind: 'relay'
+}
+
+// 逻辑门：VCC(c)/GND(d) 必须接电源，输入 a(/b)，输出 p。C=εS/d 同款教学宏——门内部=开关+电源
+export interface Gate extends BaseComp {
+  kind: 'gate'
+  type: 'AND' | 'OR' | 'NOT'
+}
+
+// 继电器/逻辑门参数常量
+export const RELAY_ITH = 0.01 // 吸合阈值电流 A（10mA）
+export const RELAY_COIL_R = 100 // 线圈电阻 Ω
+export const GATE_VTH = 1.5 // 输入高电平阈值 V
+export const GATE_R_ON = 10 // 输出驱动导通电阻 Ω
+export const GATE_R_PULL = 10000 // 输出下拉电阻 Ω
+
 // LED 参数：正向压降、导通电阻、截止电阻、亮度基准电流
 export const LED_VF = 2
 export const LED_R_ON = 0.01
@@ -171,14 +189,16 @@ export const LED_I_FULL = 0.02
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode | Capacitor | ACSource
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode | Capacitor | ACSource | Relay | Gate
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
 /** 元件当前对外暴露的接线柱（滑动变阻器：紧凑态 a/b/p 三端子，展开态 a/b/c/d 四端子，其余两端子） */
 export function terminalsOf(c: Comp): TerminalId[] {
-  if (c.kind === 'rheostat') return c.expanded ? ['a', 'b', 'c', 'd'] : ['a', 'b', 'p']
+  if (c.kind === 'rheostat') return c.expanded ? ['a', 'b', 'c', 'd', 'p'] : ['a', 'b', 'p']
   if (c.kind === 'spdt') return ['a', 'b', 'p']
+  if (c.kind === 'relay') return ['a', 'b', 'c', 'd', 'p'] // a/b=线圈，c=COM，d=常闭NC，p=常开NO
+  if (c.kind === 'gate') return ['a', 'b', 'c', 'd', 'p'] // a(/b)=输入，c=VCC，d=GND，p=输出
   return ['a', 'b']
 }
 
@@ -207,6 +227,8 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   multimeter: 46,
   capacitor: 26,
   acsource: 30,
+  relay: 40,
+  gate: 30,
   spdt: 28,
   led: 24,
 }
@@ -252,6 +274,24 @@ export function terminalPos(c: Comp, t: TerminalId): { x: number; y: number } {
   // 展开态电表：端子随虚线框外移
   const dm = (c.kind === 'voltmeter' || c.kind === 'ammeter') && c.expanded && !c.ideal ? 48 : d
   const sign = t === 'a' || t === 'c' ? -1 : 1
+  if (c.kind === 'relay') {
+    // 线圈 a/b 左右，触点一排在下：d(NC) c(COM) p(NO)
+    const local: Partial<Record<TerminalId, [number, number]>> = {
+      a: [-40, -14], b: [40, -14], c: [0, 30], d: [-22, 30], p: [22, 30],
+    }
+    const [lx, ly] = local[t] ?? local.a!
+    if (c.rot === 90) return { x: c.x - ly, y: c.y + lx }
+    return { x: c.x + lx, y: c.y + ly }
+  }
+  if (c.kind === 'gate') {
+    // 输入 a/b 在左，输出 p 在右，VCC 上、GND 下
+    const local: Partial<Record<TerminalId, [number, number]>> = {
+      a: [-32, -16], b: [-32, 16], p: [36, 0], c: [0, -32], d: [0, 32],
+    }
+    const [lx, ly] = local[t] ?? local.a!
+    if (c.rot === 90) return { x: c.x - ly, y: c.y + lx }
+    return { x: c.x + lx, y: c.y + ly }
+  }
   if (c.rot === 90) return { x: c.x, y: c.y + sign * dm }
   return { x: c.x + sign * dm, y: c.y }
 }
@@ -286,5 +326,9 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0, c: 0.001 }
     case 'acsource':
       return { id, kind, x, y, rot: 0, e: 6, f: 2, r: 0.5 }
+    case 'relay':
+      return { id, kind, x, y, rot: 0 }
+    case 'gate':
+      return { id, kind, x, y, rot: 0, type: 'AND' }
   }
 }

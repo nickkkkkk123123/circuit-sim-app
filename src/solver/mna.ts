@@ -1,7 +1,7 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
-import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf } from './types'
+import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf, RELAY_ITH, RELAY_COIL_R, GATE_VTH, GATE_R_ON, GATE_R_PULL } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
@@ -17,6 +17,8 @@ export interface SolveResult {
   openCircuit: boolean // 是否存在断路（开关断开）——灯泡等无电流
   ohm?: Record<string, number> // 欧姆表读数：两端间等效电阻（零源辅助求解），Ω
   nodes?: Record<string, number> // 各节点电压（万用表表笔测量用）
+  relayOn?: Record<string, boolean> // 继电器吸合状态
+  gateOut?: Record<string, boolean> // 逻辑门输出状态
 }
 
 // 内部分支：携带拓扑与参数
@@ -80,6 +82,11 @@ export function solve(circuit: Circuit): SolveResult {
   // LED（发光二极管）状态迭代：正向导通（Vf 压降 + 小电阻）/反向截止（开路）
   const leds = comps.filter((c) => c.kind === 'led')
   const ledOn = new Map<string, boolean>(leds.map((l) => [l.id, false]))
+  // 继电器吸合状态 / 逻辑门输出状态（与 LED 同族的状态迭代）
+  const relays = comps.filter((c) => c.kind === 'relay')
+  const gates = comps.filter((c) => c.kind === 'gate')
+  const relayOn = new Map<string, boolean>(relays.map((r) => [r.id, false]))
+  const gateOut = new Map<string, boolean>(gates.map((g) => [g.id, false]))
 
   const gAddM = (G: number[][], na: string, nb: string, g: number) => {
     const a = idx.get(na)!
@@ -259,13 +266,36 @@ export function solve(circuit: Circuit): SolveResult {
           emf: ledOn.get(c.id) ? LED_VF : 0,
         })
         break
+      case 'relay': {
+        // 继电器：线圈 a-b 电阻；触点 COM(c)→NO(p) 常开、COM(c)→NC(d) 常闭（吸合状态由外层迭代）
+        const nc = find(`${c.id}:c`)
+        const nd = find(`${c.id}:d`)
+        const np2 = find(`${c.id}:p`)
+        const on = !!relayOn.get(c.id)
+        addRes(`${c.id}:coil`, 'resistor', na, nb, RELAY_COIL_R)
+        addRes(`${c.id}:no`, on ? 'switch' : 'switch-open', nc, np2, on ? 0.01 : 1e9)
+        addRes(`${c.id}:nc`, !on ? 'switch' : 'switch-open', nc, nd, !on ? 0.01 : 1e9)
+        break
+      }
+      case 'gate': {
+        // 逻辑门：输出驱动 VCC(c)—开关—OUT(p) + 下拉 OUT—GND(d)；输入端经 10MΩ 接 GND 防悬空
+        const vcc = find(`${c.id}:c`)
+        const gnd = find(`${c.id}:d`)
+        const out = find(`${c.id}:p`)
+        const outHigh = !!gateOut.get(c.id)
+        addRes(`${c.id}:drv`, outHigh ? 'switch' : 'switch-open', vcc, out, outHigh ? GATE_R_ON : 1e9)
+        addRes(`${c.id}:pull`, 'resistor', out, gnd, GATE_R_PULL)
+        addRes(`${c.id}:in1`, 'resistor', na, gnd, 1e7)
+        if (c.type !== 'NOT') addRes(`${c.id}:in2`, 'resistor', nb, gnd, 1e7)
+        break
+      }
     }
   }
 
   let net = buildNet()
   let V: number[] = []
-  if (leds.length) {
-    // 理想二极管状态迭代：解 → 检查各 LED 电压/电流一致性 → 翻转状态重解（最多 20 轮）
+  if (leds.length || relays.length || gates.length) {
+    // 状态迭代：LED/继电器触点/逻辑门输出——解 → 校核状态 → 翻转重解（最多 20 轮）
     for (let guard = 0; guard < 20; guard++) {
       V = solveGauss(net.G, net.I)
       let flipped = false
@@ -274,6 +304,22 @@ export function solve(circuit: Circuit): SolveResult {
         const on = ledOn.get(l.id)!
         if (on && (dv - LED_VF) / LED_R_ON < -1e-9) { ledOn.set(l.id, false); flipped = true }
         else if (!on && dv > LED_VF) { ledOn.set(l.id, true); flipped = true }
+      }
+      for (const r of relays) {
+        // 线圈电流超过阈值 → 吸合
+        const va = V[idx.get(`${r.id}:a`)!]
+        const vb = V[idx.get(`${r.id}:b`)!]
+        const coilI = Math.abs(va - vb) / RELAY_COIL_R
+        const next = coilI > RELAY_ITH
+        if (next !== relayOn.get(r.id)) { relayOn.set(r.id, next); flipped = true }
+      }
+      for (const g of gates) {
+        const vn1 = (V[idx.get(`${g.id}:a`)!] ?? 0) - (V[idx.get(`${g.id}:d`)!] ?? 0)
+        const vn2 = (V[idx.get(`${g.id}:b`)!] ?? 0) - (V[idx.get(`${g.id}:d`)!] ?? 0)
+        const high1 = vn1 > GATE_VTH
+        const high2 = vn2 > GATE_VTH
+        const next = g.type === 'AND' ? high1 && high2 : g.type === 'OR' ? high1 || high2 : !high1
+        if (next !== gateOut.get(g.id)) { gateOut.set(g.id, next); flipped = true }
       }
       if (!flipped) break
       net = buildNet()
@@ -331,6 +377,27 @@ export function solve(circuit: Circuit): SolveResult {
     if (act) byComp[c.id] = { refId: c.id, kind: act.kind, dv: act.dv, current: act.current, power: act.power }
   }
 
+  // 继电器/逻辑门：byComp 合成（线圈电流 / 输出驱动电流）
+  for (const c of comps) {
+    if (c.kind === 'relay') {
+      const coil = results.find((r) => r.refId === c.id + ':coil')
+      const parts = results.filter((r) => r.refId.startsWith(c.id + ':') && r.refId !== c.id + ':coil')
+      byComp[c.id] = {
+        refId: c.id, kind: 'resistor',
+        dv: coil?.dv ?? 0, current: coil?.current ?? 0,
+        power: parts.reduce((s, p) => s + p.power, 0),
+      }
+    } else if (c.kind === 'gate') {
+      const drv = results.find((r) => r.refId === c.id + ':drv')
+      const parts = results.filter((r) => r.refId.startsWith(c.id + ':'))
+      byComp[c.id] = {
+        refId: c.id, kind: 'resistor',
+        dv: drv?.dv ?? 0, current: drv?.current ?? 0,
+        power: parts.reduce((s, p) => s + p.power, 0),
+      }
+    }
+  }
+
   const openCircuit = comps.some((c) => c.kind === 'switch' && !c.closed)
 
   // 欧姆表零源辅助求解：电池电动势置零（退化为内阻）、欧姆表本体开路，
@@ -356,5 +423,9 @@ export function solve(circuit: Circuit): SolveResult {
   }
   const nodeV: Record<string, number> = {}
   nodeIds.forEach((k, i) => { nodeV[k] = V[i] })
-  return { branches: results, byComp, openCircuit, ohm, nodes: nodeV }
+  const relayOnOut: Record<string, boolean> = {}
+  relayOn.forEach((v, k) => { relayOnOut[k] = v })
+  const gateOutOut: Record<string, boolean> = {}
+  gateOut.forEach((v, k) => { gateOutOut[k] = v })
+  return { branches: results, byComp, openCircuit, ohm, nodes: nodeV, relayOn: relayOnOut, gateOut: gateOutOut }
 }

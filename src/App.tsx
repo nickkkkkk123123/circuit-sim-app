@@ -45,6 +45,8 @@ const KIND_NAME: Record<CompKind, string> = {
   multimeter: '万用表',
   capacitor: '电容',
   acsource: '交流电源',
+  relay: '继电器',
+  gate: '逻辑门',
   spdt: '单刀双掷开关',
   led: '二极管',
   bulb: '小灯泡',
@@ -64,7 +66,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relayOn, gateOut, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -77,6 +79,8 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
   ohmReading?: number
   rheoLabel?: string
   probeDv?: number | null // 表笔吸附时的电压读数（红笔端 − 黑笔端）
+  relayOn?: boolean // 继电器吸合状态
+  gateOut?: boolean // 逻辑门输出状态
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -311,6 +315,46 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
           <line x1={13} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
         </>
       ))()}
+      {c.kind === 'relay' && (() => {
+        // 继电器：上线圈 a-b，下触点 COM(c)↔NC(d)/NO(p)，杠杆随吸合状态指向
+        const coilI = solved?.current ?? 0
+        return (
+          <>
+            <text x={0} y={-46} textAnchor="middle" fontSize={12} fontWeight={600} fill={relayOn ? T.readout : T.label}>
+              {relayOn ? '吸合' : '释放'} · {(coilI * 1000).toFixed(0)}mA
+            </text>
+            <line x1={-40} y1={-14} x2={-26} y2={-14} stroke={stroke} strokeWidth={2} />
+            <rect x={-26} y={-22} width={52} height={16} fill="none" stroke={stroke} strokeWidth={2} rx={2} />
+            <text x={0} y={-10} textAnchor="middle" fontSize={10} fill={T.label}>线圈</text>
+            <line x1={26} y1={-14} x2={40} y2={-14} stroke={stroke} strokeWidth={2} />
+            {/* 触点：c=COM 底中，d=NC 左，p=NO 右 */}
+            <line x1={-22} y1={30} x2={-9} y2={30} stroke={stroke} strokeWidth={2} />
+            <line x1={9} y1={30} x2={22} y2={30} stroke={stroke} strokeWidth={2} />
+            <line x1={0} y1={30} x2={0} y2={21} stroke={stroke} strokeWidth={2} />
+            <line x1={0} y1={21} x2={relayOn ? 13 : -13} y2={relayOn ? 17 : 25} stroke={relayOn ? T.readout : stroke} strokeWidth={2.5} strokeLinecap="round" />
+            <text x={-24} y={41} fontSize={8} fill={T.label}>NC</text>
+            <text x={-6} y={41} fontSize={8} fill={T.label}>COM</text>
+            <text x={16} y={41} fontSize={8} fill={T.label}>NO</text>
+          </>
+        )
+      })()}
+      {c.kind === 'gate' && (() => {
+        const sym = c.type === 'AND' ? '&' : c.type === 'OR' ? '≥1' : '1'
+        return (
+          <>
+            <text x={0} y={-42} textAnchor="middle" fontSize={12} fontWeight={600} fill={gateOut ? T.readout : T.label}>
+              {gateOut ? '输出高' : '输出低'}
+            </text>
+            <line x1={-32} y1={-16} x2={-20} y2={-16} stroke={stroke} strokeWidth={2} />
+            <line x1={-32} y1={16} x2={-20} y2={16} stroke={stroke} strokeWidth={2} />
+            <rect x={-20} y={-24} width={44} height={48} rx={3} fill="none" stroke={stroke} strokeWidth={2.5} />
+            <text x={2} y={7} textAnchor="middle" fontSize={15} fontWeight={700} fill={stroke}>{sym}</text>
+            <line x1={24} y1={0} x2={36} y2={0} stroke={stroke} strokeWidth={2} />
+            <text x={4} y={-27} fontSize={8} fill={T.label}>VCC</text>
+            <text x={2} y={41} fontSize={8} fill={T.label}>GND</text>
+          </>
+        )
+      })()}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -491,6 +535,8 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, onPoi
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
     : c.kind === 'capacitor' ? `${(c.c * 1e6).toFixed(0)}µF`
     : c.kind === 'acsource' ? `${c.e}V · ${c.f}Hz`
+    : c.kind === 'relay' ? (relayOn ? '吸合' : '释放')
+    : c.kind === 'gate' ? `${c.type} · ${gateOut ? '输出高' : '输出低'}`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? (meterRangeOf(c) === null ? '⚠ 表笔未接好' : `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`)
@@ -698,6 +744,14 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
       {kind === 'acsource' && (<>
         <circle r={11} {...st} />
         <path d="M -6 0 Q -3 -7 0 0 T 6 0" transform="translate(0,0)" {...st} strokeWidth={1.8} />
+      </>)}
+      {kind === 'relay' && (<>
+        <rect x={-11} y={-10} width={22} height={9} rx={1} {...st} strokeWidth={1.5} />
+        <line x1={-7} y1={9} x2={7} y2={2} {...st} strokeWidth={1.5} />
+      </>)}
+      {kind === 'gate' && (<>
+        <rect x={-11} y={-9} width={22} height={18} rx={2} {...st} strokeWidth={1.5} />
+        <text x={0} y={5} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--ink)">&</text>
       </>)}
       {kind === 'multimeter' && (<>
         <rect x={-15} y={-12} width={30} height={24} rx={3} {...st} />
@@ -1311,6 +1365,8 @@ export default function App() {
     { kind: 'led', label: '二极管' },
     { kind: 'capacitor', label: '电容' },
     { kind: 'acsource', label: '交流电源' },
+    { kind: 'relay', label: '继电器' },
+    { kind: 'gate', label: '逻辑门' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -1543,6 +1599,8 @@ export default function App() {
                 onDialOpen={(c) => { setDialFor(c.id); setDialPos(null) }}
                 onPlatePointerDown={onPlatePointerDown}
                 probeDv={multiProbeDv(c)}
+                relayOn={result.relayOn?.[c.id]}
+                gateOut={result.gateOut?.[c.id]}
                 ohmReading={result.ohm?.[c.id]}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -1728,6 +1786,34 @@ export default function App() {
                     {isV ? '并联在被测元件两端' : '串联接入被测支路'}
                     {selected.ideal ? ' · 理想表不影响电路' : ' · 实际表会改变电路，注意读数偏差'}
                     {selected.customRange ? ' · 自定义量程下无表盘可读' : ' · 点示数可查看表盘'}
+                  </p>
+                </>
+              )
+            })()}
+            {selected.kind === 'relay' && (() => {
+              const coilI = selResult?.current ?? 0
+              return (
+                <p className="warn" style={{ margin: 0 }}>
+                  线圈电流 { (coilI * 1000).toFixed(1)}mA（阈值 10mA）· 当前{relayOn ? '吸合：COM 接 NO' : '释放：COM 接 NC'}。
+                  线圈接 a/b，触点接 c(COM)/d(NC)/p(NO)。给线圈通足够大的电流，看触点切换点亮另一条回路的灯。
+                </p>
+              )
+            })()}
+            {selected.kind === 'gate' && (() => {
+              const btn = (t: 'AND' | 'OR' | 'NOT', text: string) => (
+                <button className="wide" disabled={selected.type === t}
+                  onClick={() => s.updateParam(selected.id, 'type', t)}>
+                  {text}{selected.type === t ? '（当前）' : ''}
+                </button>
+              )
+              return (
+                <>
+                  {btn('AND', '与门 AND（输入全高才输出高）')}
+                  {btn('OR', '或门 OR（任一输入高就输出高）')}
+                  {btn('NOT', '非门 NOT（输入高则输出低）')}
+                  <p className="warn" style={{ margin: 0 }}>
+                    ⚠ VCC(c) 和 GND(d) 必须接电源，门才能工作。输入 ≥1.5V 为高电平。
+                    NOT 门只使用输入 a。输出 p 可接灯泡/继电器/下一个门的输入。
                   </p>
                 </>
               )
