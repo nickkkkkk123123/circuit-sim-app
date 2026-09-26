@@ -210,8 +210,8 @@ export const EXPERIMENTS: Experiment[] = [
         { id: 'ga', kind: 'gate', x: 400, y: 260, rot: 0, type: 'AND' },
         { id: 'rs', kind: 'resistor', x: 520, y: 130, rot: 0, r: 150 },
         { id: 'rc', kind: 'resistor', x: 520, y: 260, rot: 0, r: 150 },
-        { id: 'ls', kind: 'led', x: 620, y: 130, rot: 0 },
-        { id: 'lc', kind: 'led', x: 620, y: 260, rot: 0 },
+        { id: 'ls', kind: 'led', x: 620, y: 130, rot: 0, led: true },
+        { id: 'lc', kind: 'led', x: 620, y: 260, rot: 0, led: true },
       ],
       wires: [
         // 电源轨
@@ -247,8 +247,8 @@ export const EXPERIMENTS: Experiment[] = [
         { id: 'o1', kind: 'gate', x: 670, y: 330, rot: 0, type: 'OR' },
         { id: 'rss', kind: 'resistor', x: 620, y: 130, rot: 0, r: 150 },
         { id: 'rsc', kind: 'resistor', x: 800, y: 330, rot: 0, r: 150 },
-        { id: 'ls', kind: 'led', x: 720, y: 130, rot: 0 },
-        { id: 'lc', kind: 'led', x: 900, y: 330, rot: 0 },
+        { id: 'ls', kind: 'led', x: 720, y: 130, rot: 0, led: true },
+        { id: 'lc', kind: 'led', x: 900, y: 330, rot: 0, led: true },
       ],
       wires: [
         // 电源轨：正极接 3 开关 + 5 门 VCC；负极接 5 门 GND + 2 LED 回线
@@ -294,9 +294,9 @@ export const EXPERIMENTS: Experiment[] = [
         { id: 'rs0', kind: 'resistor', x: 700, y: 110, rot: 0, r: 150 },
         { id: 'rs1', kind: 'resistor', x: 700, y: 370, rot: 0, r: 150 },
         { id: 'rs2', kind: 'resistor', x: 820, y: 480, rot: 0, r: 150 },
-        { id: 'l0', kind: 'led', x: 800, y: 110, rot: 0 },
-        { id: 'l1', kind: 'led', x: 800, y: 370, rot: 0 },
-        { id: 'l2', kind: 'led', x: 920, y: 480, rot: 0 },
+        { id: 'l0', kind: 'led', x: 800, y: 110, rot: 0, led: true },
+        { id: 'l1', kind: 'led', x: 800, y: 370, rot: 0, led: true },
+        { id: 'l2', kind: 'led', x: 920, y: 480, rot: 0, led: true },
       ],
       wires: [
         // 电源轨
@@ -337,8 +337,8 @@ export const EXPERIMENTS: Experiment[] = [
         { id: 'gqb', kind: 'gate', x: 150, y: 230, rot: 0, type: 'NOR' }, // Q̄ = NOR(S, Q)
         { id: 'rsq', kind: 'resistor', x: 490, y: 280, rot: 0, r: 150 },
         { id: 'rsqb', kind: 'resistor', x: 30, y: 280, rot: 0, r: 150 },
-        { id: 'lq', kind: 'led', x: 580, y: 280, rot: 0 },
-        { id: 'lqb', kind: 'led', x: -60, y: 280, rot: 0 },
+        { id: 'lq', kind: 'led', x: 580, y: 280, rot: 0, led: true },
+        { id: 'lqb', kind: 'led', x: -60, y: 280, rot: 0, led: true },
       ]
       const wires: Wire[] = [
         W('w01', 'bat:a', 'swS:a'), W('w02', 'bat:a', 'swR:a'),
@@ -392,12 +392,12 @@ export const EXPERIMENTS: Experiment[] = [
         w(p('a1') + ':p', p('o1') + ':a'); w(p('a2') + ':p', p('o1') + ':b')
         // 和输出
         comps.push({ id: `rs${i}`, kind: 'resistor', x: 790, y, rot: 0, r: 150 })
-        comps.push({ id: `s${i}`, kind: 'led', x: 880, y, rot: 0 })
+        comps.push({ id: `s${i}`, kind: 'led', x: 880, y, rot: 0, led: true })
         w(p('x2') + ':p', `rs${i}:a`); w(`rs${i}:b`, `s${i}:a`); w(`s${i}:b`, 'bat:b')
       }
       // 最终进位 C4
       comps.push({ id: 'rsc', kind: 'resistor', x: 790, y: 1050, rot: 0, r: 150 })
-      comps.push({ id: 'c4', kind: 'led', x: 880, y: 1050, rot: 0 })
+      comps.push({ id: 'c4', kind: 'led', x: 880, y: 1050, rot: 0, led: true })
       w('o13:p', 'rsc:a'); w('rsc:b', 'c4:a'); w('c4:b', 'bat:b')
       return { comps, wires }
     },
@@ -415,7 +415,7 @@ export const EXPERIMENTS: Experiment[] = [
       const w = (a: string, b: string) => wires.push(W(`w${++wn}`, a, b))
       const gate = (id: string, type: 'AND' | 'OR' | 'NAND' | 'NOR' | 'XOR' | 'NOT', x: number, y: number) =>
         comps.push({ id, kind: 'gate', x, y, rot: 0, type })
-      const led = (id: string, x: number, y: number, rot: 0 | 90) => comps.push({ id, kind: 'led', x, y, rot })
+      const led = (id: string, x: number, y: number, rot: 0 | 90) => comps.push({ id, kind: 'led', x, y, rot, led: true })
       // ── 加法器（两位，第 0 位 Cin 接地）──
       for (let i = 0; i < 2; i++) {
         const y = 120 + 240 * i
