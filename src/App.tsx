@@ -339,7 +339,6 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
         )
       })()}
       {c.kind === 'gate' && (() => {
-        const sym = c.type === 'AND' ? '&' : c.type === 'OR' ? '≥1' : '1'
         return (
           <>
             <text x={0} y={-42} textAnchor="middle" fontSize={12} fontWeight={600} fill={gateOut ? T.readout : T.label}>
@@ -347,9 +346,9 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
             </text>
             <line x1={-32} y1={-16} x2={-20} y2={-16} stroke={stroke} strokeWidth={2} />
             <line x1={-32} y1={16} x2={-20} y2={16} stroke={stroke} strokeWidth={2} />
-            <rect x={-20} y={-24} width={44} height={48} rx={3} fill="none" stroke={stroke} strokeWidth={2.5} />
-            <text x={2} y={7} textAnchor="middle" fontSize={15} fontWeight={700} fill={stroke}>{sym}</text>
-            <line x1={24} y1={0} x2={36} y2={0} stroke={stroke} strokeWidth={2} />
+            <path d={GATE_BODY[c.type]} fill="none" stroke={stroke} strokeWidth={2.5} />
+            {c.type === 'NOT' && <circle cx={19} cy={0} r={4} fill="none" stroke={stroke} strokeWidth={2.5} />}
+            <line x1={c.type === 'NOT' ? 23 : 24} y1={0} x2={36} y2={0} stroke={stroke} strokeWidth={2} />
             <text x={4} y={-27} fontSize={8} fill={T.label}>VCC</text>
             <text x={2} y={41} fontSize={8} fill={T.label}>GND</text>
           </>
@@ -712,6 +711,13 @@ function ModeKnob({ positions, value, onChange, dark }: { positions: { key: stri
 }
 
 /** 元件库缩略图：按元件类型画迷你符号（跟随主题变量） */
+// 标准 ANSI 门形（D 形与门/弧形或门/三角+圆圈非门），画布与选型弹窗共用；端子坐标不变
+const GATE_BODY: Record<'AND' | 'OR' | 'NOT', string> = {
+  AND: 'M -20 -24 H 0 A 24 24 0 0 1 0 24 H -20 Z',
+  OR: 'M -20 -24 C -8 -22 10 -16 24 0 C 10 16 -8 22 -20 24 C -13 14 -13 -14 -20 -24 Z',
+  NOT: 'M -20 -24 L 14 0 L -20 24 Z',
+}
+
 function MiniSymbol({ kind }: { kind: CompKind }) {
   const st = { stroke: 'var(--ink)', strokeWidth: 2, fill: 'none', strokeLinecap: 'round' as const }
   const dot = { fill: 'var(--ink)' }
@@ -750,8 +756,10 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
         <line x1={-7} y1={9} x2={7} y2={2} {...st} strokeWidth={1.5} />
       </>)}
       {kind === 'gate' && (<>
-        <rect x={-11} y={-9} width={22} height={18} rx={2} {...st} strokeWidth={1.5} />
-        <text x={0} y={5} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--ink)">&</text>
+        <line x1={-24} y1={-7} x2={-11} y2={-7} {...st} strokeWidth={1.5} />
+        <line x1={-24} y1={7} x2={-11} y2={7} {...st} strokeWidth={1.5} />
+        <path d="M -11 -11 H 0 A 11 11 0 0 1 0 11 H -11 Z" {...st} strokeWidth={1.5} />
+        <line x1={11} y1={0} x2={24} y2={0} {...st} strokeWidth={1.5} />
       </>)}
       {kind === 'multimeter' && (<>
         <rect x={-15} y={-12} width={30} height={24} rx={3} {...st} />
@@ -2445,7 +2453,6 @@ export default function App() {
               <h3>组合逻辑门</h3>
               <div className="exp-cards">
                 {(['AND', 'OR', 'NOT'] as const).map((t) => {
-                  const sym = t === 'AND' ? '&' : t === 'OR' ? '≥1' : '1'
                   const name = t === 'AND' ? '与门 AND' : t === 'OR' ? '或门 OR' : '非门 NOT'
                   const desc = t === 'AND' ? '输入全高才输出高（Y = A·B）' : t === 'OR' ? '任一输入高就输出高（Y = A+B）' : '输入高则输出低（Y = Ā，只用输入 a）'
                   return (
@@ -2456,18 +2463,15 @@ export default function App() {
                     >
                       <strong>{name}</strong>
                       <span>{desc}</span>
-                      <svg width={54} height={34} viewBox="-27 -17 54 34" aria-hidden style={{ marginTop: 6 }}>
+                      <svg width={64} height={48} viewBox="-32 -24 64 48" aria-hidden style={{ marginTop: 6 }}>
                         {t !== 'NOT' && (<>
-                          <line x1={-24} y1={-7} x2={-11} y2={-7} className="gate-mini-line" />
-                          <line x1={-24} y1={7} x2={-11} y2={7} className="gate-mini-line" />
+                          <line x1={-32} y1={-16} x2={-20} y2={-16} className="gate-mini-line" />
+                          <line x1={-32} y1={16} x2={-20} y2={16} className="gate-mini-line" />
                         </>)}
-                        {t === 'NOT' && (<>
-                          <line x1={-24} y1={0} x2={-11} y2={0} className="gate-mini-line" />
-                          <circle cx={14} cy={0} r={2.5} className="gate-mini-dot" />
-                        </>)}
-                        <rect x={-11} y={-11} width={22} height={22} rx={2} className="gate-mini-line" />
-                        <text x={0} y={5} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--ink)">{sym}</text>
-                        <line x1={11} y1={0} x2={24} y2={0} className="gate-mini-line" />
+                        {t === 'NOT' && <line x1={-32} y1={0} x2={-20} y2={0} className="gate-mini-line" />}
+                        <path d={GATE_BODY[t]} className="gate-mini-line" />
+                        {t === 'NOT' && <circle cx={19} cy={0} r={4} className="gate-mini-line" />}
+                        <line x1={24} y1={0} x2={32} y2={0} className="gate-mini-line" />
                       </svg>
                     </button>
                   )
