@@ -113,8 +113,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--panel)', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 22px', borderBottom: '1px solid var(--panel-line)' }}>
+    <div className="kin">
+      <header className="kin-head">
         <h1 style={{ fontSize: 17, letterSpacing: 2, color: 'var(--ink)', margin: 0 }}>运动学实验室</h1>
         <span className="menu-beta">β 测试版</span>
         <span style={{ flex: 1 }} />
@@ -124,9 +124,9 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
           </svg>
         </button>
       </header>
-      <div style={{ flex: 1, display: 'flex', gap: 14, padding: 14, alignItems: 'flex-start' }}>
+      <div className="kin-row">
         {/* 左栏：工具 + 属性 */}
-        <aside style={{ width: 210, flex: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <aside className="kin-aside">
           <p className="hint" style={{ margin: 0 }}>物体</p>
           {([
             ['ball', '小球（拖拽定初速）'],
@@ -184,7 +184,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
           )}
         </aside>
         {/* 主区：画布 + 全局控制 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="kin-main">
           <svg
             viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 12, border: '1px solid var(--border)', touchAction: 'none', cursor: tool === 'select' ? 'default' : 'crosshair' }}
             onPointerDown={(e) => {
