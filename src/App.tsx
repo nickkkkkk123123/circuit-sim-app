@@ -815,6 +815,56 @@ export default function App() {
     window.addEventListener('pointerup', up)
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
   }, [probeDrag])
+
+  // 触屏双指捏合缩放：window 级追踪指针（落点无论在元件还是空白都算数），
+  // 两指落进画布即进入捏合——中点世界坐标锚定，指间距驱动 scale，挂起其他拖拽手势
+  useEffect(() => {
+    const inStage = (ev: PointerEvent) => !!(ev.target as Element | null)?.closest?.('.stage')
+    const down = (ev: PointerEvent) => {
+      pointersRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, inStage: inStage(ev) })
+      const actives = [...pointersRef.current.values()].filter((p) => p.inStage)
+      if (actives.length === 2) {
+        setPan(null)
+        setDragging(null)
+        setCapDrag(null)
+        clearLP()
+        const d = Math.hypot(actives[0].x - actives[1].x, actives[0].y - actives[1].y)
+        const c = { x: (actives[0].x + actives[1].x) / 2, y: (actives[0].y + actives[1].y) / 2 }
+        const c1 = toCanvas({ clientX: c.x, clientY: c.y } as React.PointerEvent)
+        pinchRef.current = { d, cx: c1.x, cy: c1.y }
+      }
+    }
+    const move = (ev: PointerEvent) => {
+      const rec = pointersRef.current.get(ev.pointerId)
+      if (rec) { rec.x = ev.clientX; rec.y = ev.clientY }
+      const actives = [...pointersRef.current.values()].filter((p) => p.inStage)
+      if (actives.length === 2 && pinchRef.current) {
+        const d = Math.hypot(actives[0].x - actives[1].x, actives[0].y - actives[1].y)
+        const c = { x: (actives[0].x + actives[1].x) / 2, y: (actives[0].y + actives[1].y) / 2 }
+        const c1 = toCanvas({ clientX: c.x, clientY: c.y } as React.PointerEvent)
+        const f = Math.min(4, Math.max(0.2, d / (pinchRef.current.d || 1)))
+        const scale = Math.min(3, Math.max(0.4, viewRef.current.scale * f))
+        const c0 = { x: pinchRef.current.cx, y: pinchRef.current.cy }
+        applyView({ scale, tx: c1.x - c0.x * scale, ty: c1.y - c0.y * scale })
+        pinchRef.current = { d, cx: c1.x, cy: c1.y }
+      }
+    }
+    const up = (ev: PointerEvent) => {
+      pointersRef.current.delete(ev.pointerId)
+      if (pointersRef.current.size < 2) pinchRef.current = null
+    }
+    window.addEventListener('pointerdown', down)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointerdown', down)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [switchPress, setSwitchPress] = useState<{ id: string; x0: number; y0: number; dx: number; dy: number; moved: boolean } | null>(null)
   const [hoverTerm, setHoverTerm] = useState<string | null>(null)
   const [grabbedEnd, setGrabbedEnd] = useState<{ otherTerm: string } | null>(null)
@@ -1001,7 +1051,7 @@ export default function App() {
   const [pan, setPan] = useState<{ sx: number; sy: number; tx0: number; ty0: number; active: boolean } | null>(null)
 
   // 触屏：双指捏合缩放（两指都在空白处按下触发）；单指仍为平移
-  const pointersRef = useRef(new Map<number, { x: number; y: number }>())
+  const pointersRef = useRef(new Map<number, { x: number; y: number; inStage?: boolean }>())
   const pinchRef = useRef<{ d: number; cx: number; cy: number } | null>(null)
   // 长按删除（仅触屏）：按住 500ms 删除元件/导线
   const lpRef = useRef<number | null>(null)
@@ -1047,16 +1097,7 @@ export default function App() {
     }
     s.select(null)
     s.selectWire(null)
-    // 触屏：记录按下指针，凑满两指进入捏合缩放
-    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 忽略 */ }
-    if (pointersRef.current.size === 2) {
-      const [a, b] = [...pointersRef.current.values()]
-      setPan(null)
-      clearLP()
-      pinchRef.current = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: 0, cy: 0 }
-      return
-    }
     // 空白处按下：进入平移待定（拖动超 6px 才算平移，原地点击=取消选中）
     // 起点必须存屏幕坐标——世界坐标随平移自身变化，用它算增量会自激振荡（画布重影）
     setPan({ sx: e.clientX, sy: e.clientY, tx0: viewRef.current.tx, ty0: viewRef.current.ty, active: false })
@@ -1083,24 +1124,6 @@ export default function App() {
 
   const onCanvasPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e)
-    // 捏合缩放优先：两指都在画布上时按指间距改 scale、中点位移做平移
-    if (pointersRef.current.has(e.pointerId)) pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (pointersRef.current.size === 2 && pinchRef.current) {
-      const [a, b] = [...pointersRef.current.values()]
-      const d = Math.hypot(a.x - b.x, a.y - b.y)
-      const c1 = toCanvas({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 } as React.PointerEvent)
-      const f = Math.min(4, Math.max(0.2, d / (pinchRef.current.d || 1)))
-      const scale = Math.min(3, Math.max(0.4, viewRef.current.scale * f))
-      const c0 = { x: pinchRef.current.cx, y: pinchRef.current.cy }
-      // 首次移动：c0 还没初始化（down 时没算世界坐标）——先记下中点世界坐标
-      if (!pinchRef.current.cx && !pinchRef.current.cy) {
-        pinchRef.current = { d, cx: c1.x, cy: c1.y }
-        return
-      }
-      applyView({ scale, tx: c1.x - c0.x * scale, ty: c1.y - c0.y * scale })
-      pinchRef.current = { d, cx: c1.x, cy: c1.y }
-      return
-    }
     if (pan) {
       // 平移画布：增量在屏幕像素空间计算，只除 svg 线性系数（k）——
       // 1:1 跟手的关键：dtx = D/k，与视图缩放无关（多除一次 scale 就是现在的变速 bug）
