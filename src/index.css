@@ -244,9 +244,10 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .exp-panel-body { padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
 .exp-panel-body p { font-size: 12px; line-height: 1.7; color: var(--ink); }
 
-/* 表盘浮窗：非模态、可拖动、开着能继续实验 */
+/* 表盘浮窗：非模态、可拖动、开着能继续实验；宽度定死不随内容撑开，右下角可横向拉伸调节 */
 .dial-float {
   position: fixed; right: 280px; top: 72px; z-index: 40;
+  width: 340px; min-width: 300px; max-width: 90vw; resize: horizontal; overflow: auto;
   background: var(--panel); border: 1px solid var(--border-hot); border-radius: 12px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
   display: flex; flex-direction: column; align-items: center; gap: 8px;
@@ -257,9 +258,15 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   cursor: grab; touch-action: none; user-select: none;
 }
 .dial-head:active { cursor: grabbing; }
-.dial-head h3 { font-size: 13px; font-weight: 600; color: var(--accent-soft); }
-.dial-body { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.dial-hint { font-size: 11px; color: var(--faint); max-width: 280px; text-align: center; }
+.dial-head h3 {
+  font-size: 13px; font-weight: 600; color: var(--accent-soft);
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dial-body { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; }
+.dial-hint { font-size: 11px; color: var(--faint); max-width: 300px; text-align: center; overflow-wrap: anywhere; }
+.dial-rows span { overflow-wrap: anywhere; }
+.dial-val { max-width: 100%; overflow: hidden; }
+.dial-rows, .dial-hint, .dial-val { width: 100%; }
 
 /* 三接线柱：− 公共端固定，两个量程柱由接线环选择 */
 .dial-posts { display: flex; gap: 26px; margin-top: 2px; }
