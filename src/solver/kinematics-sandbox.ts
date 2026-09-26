@@ -10,17 +10,17 @@ export interface Ball {
   vy: number
   r: number // 半径 m
   m: number // 质量 kg（与 r² 成比例的默认值，可覆盖）
+  e: number // 恢复系数 0~1（该球材料属性；球-球取两者平均）
 }
 
 export interface SandboxParams {
   g: number // 重力加速度 m/s²（向下为正）
-  e: number // 恢复系数 0~1（1=完全弹性，0=完全非弹性）
   W: number // 场地宽 m
   H: number // 场地高 m
 }
 
-export function makeBall(id: number, x: number, y: number, r: number, vx = 0, vy = 0): Ball {
-  return { id, x, y, r, vx, vy, m: r * r * 10 } // 默认质量 ∝ r²（面密度均匀）
+export function makeBall(id: number, x: number, y: number, r: number, vx = 0, vy = 0, e = 1): Ball {
+  return { id, x, y, r, vx, vy, m: r * r * 10, e } // 默认质量 ∝ r²（面密度均匀）
 }
 
 /** 单步积分（半隐式欧拉：先更新速度再更新位置，重力下能量漂移小于显式欧拉） */
@@ -32,18 +32,18 @@ export function integrate(balls: Ball[], p: SandboxParams, dt: number): void {
   }
 }
 
-/** 球-墙碰撞（四壁反弹，恢复系数 e；位置钳位防穿墙） */
+/** 球-墙碰撞（四壁反弹，用球自己的恢复系数；位置钳位防穿墙） */
 export function wallCollisions(balls: Ball[], p: SandboxParams): void {
   for (const b of balls) {
-    if (b.x - b.r < 0) { b.x = b.r; if (b.vx < 0) b.vx = -b.vx * p.e }
-    if (b.x + b.r > p.W) { b.x = p.W - b.r; if (b.vx > 0) b.vx = -b.vx * p.e }
-    if (b.y - b.r < 0) { b.y = b.r; if (b.vy < 0) b.vy = -b.vy * p.e }
-    if (b.y + b.r > p.H) { b.y = p.H - b.r; if (b.vy > 0) b.vy = -b.vy * p.e }
+    if (b.x - b.r < 0) { b.x = b.r; if (b.vx < 0) b.vx = -b.vx * b.e }
+    if (b.x + b.r > p.W) { b.x = p.W - b.r; if (b.vx > 0) b.vx = -b.vx * b.e }
+    if (b.y - b.r < 0) { b.y = b.r; if (b.vy < 0) b.vy = -b.vy * b.e }
+    if (b.y + b.r > p.H) { b.y = p.H - b.r; if (b.vy > 0) b.vy = -b.vy * b.e }
   }
 }
 
-/** 球-球碰撞：冲量法（沿法线的弹性碰撞通解，含恢复系数）+ 按质量比例的位置修正 */
-export function ballCollisions(balls: Ball[], p: SandboxParams): void {
+/** 球-球碰撞：冲量法（沿法线的弹性碰撞通解，恢复系数取两球平均）+ 按质量比例的位置修正 */
+export function ballCollisions(balls: Ball[]): void {
   for (let i = 0; i < balls.length; i++) {
     for (let j = i + 1; j < balls.length; j++) {
       const a = balls[i], b = balls[j]
@@ -59,11 +59,12 @@ export function ballCollisions(balls: Ball[], p: SandboxParams): void {
       a.y -= ny * overlap * (b.m / totalM)
       b.x += nx * overlap * (a.m / totalM)
       b.y += ny * overlap * (a.m / totalM)
-      // 冲量：只在相互接近时施加
+      // 冲量：只在相互接近时施加；恢复系数取两球材料的平均
       const rvx = b.vx - a.vx, rvy = b.vy - a.vy
       const vn = rvx * nx + rvy * ny
       if (vn >= 0) continue // 正在分离
-      const jImp = (-(1 + p.e) * vn) / (1 / a.m + 1 / b.m)
+      const ePair = (a.e + b.e) / 2
+      const jImp = (-(1 + ePair) * vn) / (1 / a.m + 1 / b.m)
       a.vx -= (jImp / a.m) * nx
       a.vy -= (jImp / a.m) * ny
       b.vx += (jImp / b.m) * nx
@@ -77,8 +78,8 @@ export function stepSandbox(balls: Ball[], statics: StaticShape[], p: SandboxPar
   const h = dt / subSteps
   for (let i = 0; i < subSteps; i++) {
     integrate(balls, p, h)
-    ballCollisions(balls, p)
-    staticCollisions(balls, statics, p.e)
+    ballCollisions(balls)
+    staticCollisions(balls, statics)
     wallCollisions(balls, p)
   }
 }
@@ -150,16 +151,16 @@ export function circleVsSegment(b: Ball, ax: number, ay: number, bx: number, by:
   }
 }
 
-/** 静态体碰撞入口：按类型生成线段并逐条检测 */
-export function staticCollisions(balls: Ball[], statics: StaticShape[], e: number): void {
+/** 静态体碰撞入口：按类型生成线段并逐条检测（恢复系数用球自己的材料属性） */
+export function staticCollisions(balls: Ball[], statics: StaticShape[]): void {
   for (const s of statics) {
     if (s.kind === 'seg') {
       const ep = segEndpoints(s)
-      for (const b of balls) circleVsSegment(b, ep.ax, ep.ay, ep.bx, ep.by, e)
+      for (const b of balls) circleVsSegment(b, ep.ax, ep.ay, ep.bx, ep.by, b.e)
     } else {
       const pts = arcPoints(s)
       for (let i = 0; i < pts.length - 1; i++) {
-        for (const b of balls) circleVsSegment(b, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, e)
+        for (const b of balls) circleVsSegment(b, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, b.e)
       }
     }
   }

@@ -403,3 +403,9 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   display: inline-flex; align-items: center; justify-content: center; padding: 0;
 }
 .kin .icon-btn:hover { background: var(--panel-hover); border-color: var(--border-hot); }
+
+.kin { height: 100vh; overflow: hidden; }
+.kin-main { overflow-y: auto; padding-right: 4px; }
+.kin-main::-webkit-scrollbar { width: 6px; }
+.kin-main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.kin-main::-webkit-scrollbar-track { background: transparent; }

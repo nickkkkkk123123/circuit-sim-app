@@ -19,7 +19,6 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const [tool, setTool] = useState<Tool>('ball')
   const [sel, setSel] = useState<Sel>(null)
   const [g, setG] = useState(9.8)
-  const [eRest, setERest] = useState(1)
   const [running, setRunning] = useState(false)
   const [trails, setTrails] = useState(true)
   const [, setTick] = useState(0)
@@ -40,7 +39,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     const loop = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.05)
       last = now
-      const params: SandboxParams = { g, e: eRest, W, H }
+      const params: SandboxParams = { g, W, H }
       stepSandbox(ballsRef.current, staticsRef.current, params, dt, 4)
       if (trails) {
         for (const b of ballsRef.current) {
@@ -56,7 +55,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [running, g, eRest, trails])
+  }, [running, g, trails])
 
   const svgPoint = (e: React.PointerEvent) => {
     const r = (e.currentTarget as SVGElement).getBoundingClientRect()
@@ -161,6 +160,10 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                       <input type="range" min={0.3} max={1.5} step={0.1} value={selBall.r}
                         onChange={(e2) => updBall(selBall.id, { r: +e2.target.value })} />
                     </label>
+                    <label>弹性系数 {selBall.e.toFixed(2)}（0=泥球 1=完全弹性）
+                      <input type="range" min={0} max={1} step={0.05} value={selBall.e}
+                        onChange={(e2) => updBall(selBall.id, { e: +e2.target.value })} />
+                    </label>
                   </>
                 )
               })()}
@@ -190,9 +193,10 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
             onPointerDown={(e) => {
               const { wx, wy } = svgPoint(e)
               ;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId)
-              if (tool === 'seg' || tool === 'arc') { placeAt(wx, wy, 0, 0); return } // 斜面/圆弧：点击即放默认尺寸
+              const w = worldOf({ x: wx, y: wy }) // svgPoint 是 viewBox 像素坐标，必须先转世界米坐标！
+              if (tool === 'seg' || tool === 'arc') { placeAt(w.wx, w.wy, 0, 0); return } // 斜面/圆弧：点击即放默认尺寸
               dragRef.current = { kind: tool === 'ball' ? 'place' : 'move', sx: wx, sy: wy, cx: wx, cy: wy, movedSel: null }
-              if (tool === 'select') setSel(hitTest(wx, wy))
+              if (tool === 'select') setSel(hitTest(w.wx, w.wy))
             }}
             onPointerMove={(e) => {
               const d = dragRef.current
@@ -261,10 +265,6 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
             <label style={{ flex: 1, minWidth: 150 }}>
               重力 {g}m/s²
               <input type="range" min={0} max={25} step={0.1} value={g} onChange={(e) => setG(+e.target.value)} />
-            </label>
-            <label style={{ flex: 1, minWidth: 150 }}>
-              弹性系数 {eRest.toFixed(2)}
-              <input type="range" min={0} max={1} step={0.05} value={eRest} onChange={(e) => setERest(+e.target.value)} />
             </label>
             <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <input type="checkbox" checked={trails} onChange={(e) => setTrails(e.target.checked)} />轨迹
