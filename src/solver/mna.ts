@@ -216,21 +216,23 @@ export function solve(circuit: Circuit): SolveResult {
         addRes(c.id, 'ohmmeter', na, nb, 1e9)
         break
       case 'multimeter': {
-        // 只有电压/电流/电阻三档参与仿真（数显：V=10MΩ 并联、A=0.01Ω 串联；经典：内阻随量程缩放）；
-        // OFF/AC/蜂鸣/CAP/hFE/未支持量程 = 开路（未模拟档无读数；Ω 读数走零源辅助解）
-        // 表笔模式：V/Ω 档且双表笔已吸附 → 表笔无源测量（主解开路，不干扰电路；读数走节点电压/零源辅助解）
+        // 测量支路的连接点：双表笔吸附时 = 两表笔所在的端子（真表行为：电流档经表笔导通、
+        // 电压档经表内 10MΩ、Ω 档走零源辅助解）；未吸附 = 元件 a/b 接线端子。
+        // OFF/AC/蜂鸣/CAP/hFE/未支持量程 = 开路（未模拟档无读数）
         const kind = multiKindOf(c.mode)
-        const probed = !!(c.pa && c.pb)
-        if (kind === 'V' && probed) { addRes(c.id, 'multimeter', na, nb, 1e9); break }
-        if (!kind || kind === 'Ω') { addRes(c.id, 'multimeter', na, nb, 1e9); break }
+        const probed = !!(c.pa && c.pb && idx.has(c.pa) && idx.has(c.pb))
+        const na2 = probed ? find(c.pa!) : na
+        const nb2 = probed ? find(c.pb!) : nb
+        if (!kind) { addRes(c.id, 'multimeter', na, nb, 1e9); break }
+        if (kind === 'Ω') { addRes(c.id, 'multimeter', na2, nb2, 1e9); break }
         const range = multiRangeOf(c.mode, c.range) ?? 0
         if (c.style === 'classic') {
           const r = kind === 'V'
             ? (c.ideal ? 1e7 : Math.max((c.r ?? 3000) * range / 2.5, 1))
             : (c.ideal ? 1e-3 : Math.max(0.06 / Math.max(range, 1e-4), 1e-3))
-          addRes(c.id, 'multimeter', na, nb, r)
+          addRes(c.id, 'multimeter', na2, nb2, r)
         } else {
-          addRes(c.id, 'multimeter', na, nb, kind === 'V' ? 1e7 : 0.01)
+          addRes(c.id, 'multimeter', na2, nb2, kind === 'V' ? 1e7 : 0.01)
         }
         break
       }

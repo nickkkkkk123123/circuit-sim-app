@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { stepTransient, emptyTransient, type TransientState } from './transient'
-import { type SolveResult } from './mna'
+import { solve, type SolveResult } from './mna'
 import { capC, type Circuit, type Comp, type Wire } from './types'
 
 // RC 充电电路：电源(6V, r=0.1) - 开关(闭合) - 电阻(10Ω) - 电容(1000µF)
@@ -64,6 +64,19 @@ describe('瞬态引擎（电容伴随模型，状态=电荷Q）', () => {
     const { circuit, st } = rcCircuit()
     const { result } = run(circuit, st, 0.1)
     expect(result!.byComp['c1'].current).toBeLessThan(1e-4)
+  })
+
+  it('DCA 表笔导通：电流经两表笔流过表内分流电阻（回路经表笔闭合）', () => {
+    const comps: Comp[] = [
+      { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.1 },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+      { id: 'm1', kind: 'multimeter', x: 0, y: 0, rot: 0, mode: 'DCA', pa: 'r1:b', pb: 'b1:b' },
+    ]
+    const wires: Wire[] = [{ id: 'w1', a: 'b1:a', b: 'r1:a' }]
+    const r = solve({ comps, wires })
+    // 回路：b1 → r1 → 红表笔(r1:b) → 表内 0.01Ω → 黑表笔(b1:b) → b1
+    expect(r.byComp['m1'].current).toBeCloseTo(6 / 10.11, 1)
+    expect(r.byComp['r1'].current).toBeCloseTo(r.byComp['m1'].current, 3)
   })
 
   it('平行板决定式：Q 不变时 d 拉大一倍 → U = Q/C 翻倍', () => {
