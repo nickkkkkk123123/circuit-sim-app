@@ -409,3 +409,6 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .kin-main::-webkit-scrollbar { width: 6px; }
 .kin-main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .kin-main::-webkit-scrollbar-track { background: transparent; }
+
+/* 沙盒画布：高度配额锁死（视口-头部-控制区），宽度按 16:9 反推——元素长宽比恒等于 viewBox，坐标映射不漂移 */
+.kin-canvas { display: block; width: 100%; max-width: calc((100vh - 250px) * 1.7778); margin: 0 auto; border-radius: 12px; }

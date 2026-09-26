@@ -224,7 +224,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         <div className="kin-main">
           <svg
             ref={svgRef}
-            viewBox="0 0 800 450" style={{ width: '100%', background: 'var(--panel-raise)', borderRadius: 12, border: '1px solid var(--border)', touchAction: 'none', cursor: tool === 'select' ? 'default' : 'crosshair' }}
+            viewBox="0 0 800 450" className="kin-canvas" style={{ background: 'var(--panel-raise)', border: '1px solid var(--border)', touchAction: 'none', cursor: tool === 'select' ? 'default' : 'crosshair' }}
             onPointerDown={(e) => {
               const { wx, wy } = svgPoint(e)
               ;(e.currentTarget as SVGElement).setPointerCapture(e.pointerId)
