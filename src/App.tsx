@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
-import { solve } from './solver/mna'
+import { solve, type SolveResult } from './solver/mna'
+import { stepTransient, type TransientState } from './solver/transient'
 import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, type Comp, type CompKind, type MeterPosts } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { THEME as T } from './theme'
@@ -42,6 +43,7 @@ const KIND_NAME: Record<CompKind, string> = {
   galvanometer: '灵敏电流计',
   ohmmeter: '欧姆表',
   multimeter: '万用表',
+  capacitor: '电容',
   spdt: '单刀双掷开关',
   led: '二极管',
   bulb: '小灯泡',
@@ -101,6 +103,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
     return fmtOhm(ohmReading ?? Infinity) // Ω
   })() : ''
   const isLed = c.kind === 'led'
+  const isCap = c.kind === 'capacitor'
   const ledLit = isLed && (solved?.current ?? 0) > 0.002
   const ledFrac = ledLit ? Math.min(1, (solved!.current ?? 0) / LED_I_FULL) : 0
   const hitHalf = isMeter && c.expanded && !c.ideal ? 52 : d
@@ -248,6 +251,18 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
           </>
         )
       })())}
+      {isCap && (() => (
+        // 电容：两平行板符号，上方实时电压
+        <>
+          <text x={0} y={-28} textAnchor="middle" fontSize={12} fontWeight={600} fill={Math.abs(solved?.dv ?? 0) > 0.01 ? T.readout : T.label}>
+            {(solved?.dv ?? 0).toFixed(2)}V
+          </text>
+          <line x1={-24} y1={0} x2={-9} y2={0} stroke={stroke} strokeWidth={2} />
+          <line x1={-9} y1={-9} x2={-9} y2={9} stroke={stroke} strokeWidth={3.5} />
+          <line x1={9} y1={-9} x2={9} y2={9} stroke={stroke} strokeWidth={3.5} />
+          <line x1={9} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
+        </>
+      ))}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -426,6 +441,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
   )
   const label =
     c.kind === 'battery' ? `${c.emf}V · r=${c.r}Ω`
+    : c.kind === 'capacitor' ? `${(c.c * 1e6).toFixed(0)}µF`
     : c.kind === 'resistor' ? `${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? (meterRangeOf(c) === null ? '⚠ 表笔未接好' : `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`)
@@ -629,6 +645,12 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
         <line x1={-11} y1={-7} x2={11} y2={-7} {...st} strokeWidth={1.2} />
         <circle cx={0} cy={4} r={4.5} {...st} strokeWidth={1.2} />
       </>)}
+      {kind === 'capacitor' && (<>
+        <line x1={-8} y1={-8} x2={8} y2={-8} {...st} strokeWidth={3} />
+        <line x1={-8} y1={8} x2={8} y2={8} {...st} strokeWidth={3} />
+        <line x1={-20} y1={0} x2={-8} y2={0} {...st} />
+        <line x1={8} y1={0} x2={20} y2={0} {...st} />
+      </>)}
       {kind === 'spdt' && (<>
         <circle cx={-10} cy={-10} r={2.5} {...dot} />
         <circle cx={10} cy={-10} r={2.5} {...dot} />
@@ -734,7 +756,51 @@ export default function App() {
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
 
-  const result = useMemo(() => solve({ comps: s.comps, wires: s.wires }), [s.comps, s.wires])
+  const staticResult = useMemo(() => solve({ comps: s.comps, wires: s.wires }), [s.comps, s.wires])
+
+  // 瞬态引擎：画布上有电容时启动时间步进（rAF 驱动；电容电压状态存 ref，不进撤销栈）
+  const hasCaps = s.comps.some((c) => c.kind === 'capacitor')
+  const capVRef = useRef<Record<string, number>>({})
+  const curveRef = useRef<Record<string, number[]>>({})
+  const [tResult, setTResult] = useState<SolveResult | null>(null)
+  const [speed, setSpeed] = useState(0.05) // 仿真流速（真实秒×倍率），0=暂停
+  useEffect(() => {
+    if (!hasCaps) { setTResult(null); return }
+    let raf = 0
+    let last = performance.now()
+    const DT = 0.0002 // 单步 0.2ms
+    const loop = (now: number) => {
+      const dtReal = Math.min((now - last) / 1000, 0.05)
+      last = now
+      let remaining = dtReal * speed
+      let st: TransientState = { vcap: capVRef.current }
+      let res: SolveResult | null = null
+      let guard = 0
+      while (remaining > 1e-6 && guard++ < 250) {
+        const dt = Math.min(DT, remaining)
+        const out = stepTransient({ comps: s.comps, wires: s.wires }, st, dt)
+        st = out.state
+        res = out.result
+        remaining -= dt
+      }
+      capVRef.current = st.vcap
+      // U-t 曲线采样（每电容保留 400 点），并清理已删元件
+      for (const k of Object.keys(curveRef.current)) {
+        if (!s.comps.some((c) => c.id === k)) delete curveRef.current[k]
+      }
+      for (const c of s.comps) {
+        if (c.kind !== 'capacitor') continue
+        const arr = curveRef.current[c.id] ?? (curveRef.current[c.id] = [])
+        arr.push(st.vcap[c.id] ?? 0)
+        if (arr.length > 400) arr.shift()
+      }
+      if (res) setTResult(res)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [hasCaps, s.comps, s.wires, speed])
+  const result = tResult ?? staticResult
 
   // 持久化：电路一变就存
   useEffect(() => {
@@ -994,6 +1060,7 @@ export default function App() {
     { kind: 'multimeter', label: '万用表' },
     { kind: 'spdt', label: '单刀双掷' },
     { kind: 'led', label: '二极管' },
+    { kind: 'capacitor', label: '电容' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -1040,6 +1107,12 @@ export default function App() {
             <span className="dot" style={{ background: '#9aa3b8' }} />撤销 {canUndo ? `(${undoCount})` : ''}
           </button>
         </div>
+        {hasCaps && (
+          <label className="speed-ctl">
+            仿真流速 ×{speed.toFixed(2)}（0 = 暂停）
+            <input type="range" min={0} max={1} step={0.01} value={speed} onChange={(e) => setSpeed(+e.target.value)} />
+          </label>
+        )}
         <p className="tips">
           按住端子拖到另一端松手即连线<br />
           （或点两个端子）· Esc 取消连线<br />
@@ -1332,6 +1405,31 @@ export default function App() {
                     {isV ? '并联在被测元件两端' : '串联接入被测支路'}
                     {selected.ideal ? ' · 理想表不影响电路' : ' · 实际表会改变电路，注意读数偏差'}
                     {selected.customRange ? ' · 自定义量程下无表盘可读' : ' · 点示数可查看表盘'}
+                  </p>
+                </>
+              )
+            })()}
+            {selected.kind === 'capacitor' && (() => {
+              const u = selResult?.dv ?? capVRef.current[selected.id] ?? 0
+              const q = selected.c * u * 1e6
+              const e = 0.5 * selected.c * u * u * 1000
+              const hist = curveRef.current[selected.id] ?? []
+              const max = Math.max(0.5, ...hist.map(Math.abs))
+              const pts = hist.map((v, i) => `${((i / Math.max(1, hist.length - 1)) * 220).toFixed(1)},${(20 - (v / max) * 17).toFixed(1)}`).join(' ')
+              return (
+                <>
+                  <label>电容 {(selected.c * 1e6).toFixed(0)}µF
+                    <input type="range" min={10} max={4700} step={10} value={Math.round(selected.c * 1e6)}
+                      onChange={(ev) => s.updateParam(selected.id, 'c', +ev.target.value / 1e6)} />
+                  </label>
+                  <svg width={220} height={40} style={{ borderRadius: 4, background: 'var(--panel-line)' }}>
+                    <line x1={0} y1={20} x2={220} y2={20} stroke="var(--faint)" strokeWidth={0.5} strokeDasharray="3 3" />
+                    {hist.length > 1 && <polyline points={pts} fill="none" stroke="var(--accent-soft)" strokeWidth={1.5} />}
+                  </svg>
+                  <p className="warn" style={{ margin: 0 }}>
+                    U = {u.toFixed(2)}V · Q = {q.toFixed(0)}µC · E = ½CU² = {e.toFixed(2)}mJ
+                    {selResult && Math.abs(selResult.current) > 1e-6 ? ' · 充/放电中' : ' · 稳态（无电流）'}。
+                    曲线为电容电压 U-t 记录（右端最新）；拖慢侧栏"仿真流速"可看清充电过程。
                   </p>
                 </>
               )

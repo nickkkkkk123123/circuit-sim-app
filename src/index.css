@@ -268,6 +268,9 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .dial-val { max-width: 100%; overflow: hidden; }
 .dial-rows, .dial-hint, .dial-val { width: 100%; }
 
+/* 侧栏仿真流速滑块（画布上有电容时出现） */
+.speed-ctl { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); padding: 0 4px; }
+
 /* 三接线柱：− 公共端固定，两个量程柱由接线环选择 */
 .dial-posts { display: flex; gap: 26px; margin-top: 2px; }
 .post { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; }
