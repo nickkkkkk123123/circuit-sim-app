@@ -262,7 +262,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, onPointerDown,
           <line x1={9} y1={-9} x2={9} y2={9} stroke={stroke} strokeWidth={3.5} />
           <line x1={9} y1={0} x2={24} y2={0} stroke={stroke} strokeWidth={2} />
         </>
-      ))}
+      ))()}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -639,6 +639,12 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
         <line x1={14} y1={8} x2={24} y2={8} {...st} />
         <line x1={0} y1={-12} x2={0} y2={2} {...st} />
         <polygon points="0,4 -4,-3 4,-3" {...dot} />
+      </>)}
+      {(kind === 'voltmeter' || kind === 'ammeter' || kind === 'ohmmeter' || kind === 'galvanometer') && (<>
+        <circle r={13} {...st} />
+        <text x={0} y={5} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--ink)">
+          {kind === 'voltmeter' ? 'V' : kind === 'ammeter' ? 'A' : kind === 'ohmmeter' ? 'Ω' : 'G'}
+        </text>
       </>)}
       {kind === 'multimeter' && (<>
         <rect x={-15} y={-12} width={30} height={24} rx={3} {...st} />
