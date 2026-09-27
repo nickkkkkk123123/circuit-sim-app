@@ -189,8 +189,11 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         kinState().updateBall(d.id, { vx: (w.x - b.x) / px, vy: (w.y - b.y) / px })
       }
     } else {
-      setView((v) => ({ ...v, tx: v.tx + (e.clientX - d.lpx), ty: v.ty + (e.clientY - d.lpy) }))
+      // delta 必须在突变 d.lpx 之前算好：setView 的 updater 是延迟执行的，
+      // 若在 updater 里读 d.lpx，读到的永远是突变后的新值（delta 恒 0）
+      const dx = e.clientX - d.lpx, dy = e.clientY - d.lpy
       d.lpx = e.clientX; d.lpy = e.clientY
+      setView((v) => ({ ...v, tx: v.tx + dx, ty: v.ty + dy }))
     }
     tickRender((v) => v + 1)
   }
