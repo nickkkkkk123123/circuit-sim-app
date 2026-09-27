@@ -153,17 +153,21 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       dragRef.current = { kind: 'place', swx: w.x, swy: w.y, cwx: w.x, cwy: w.y }
       return
     }
+    // 优先级最高：已选中球的速度箭头尖端（必须在 setSel 之前判，否则拖箭头会先取消选中）
+    if (s.sel?.type === 'ball') {
+      const b0 = st.balls.find((q) => q.id === s.sel!.id)
+      if (b0) {
+        const px = 18 / viewRef.current.scale
+        const tip = { x: b0.x + b0.vx * px, y: b0.y + b0.vy * px }
+        if (Math.hypot(w.x - tip.x, w.y - tip.y) < 14 / viewRef.current.scale) {
+          dragRef.current = { kind: 'vdrag', id: b0.id }
+          return
+        }
+      }
+    }
     const hit = hitTest(w.x, w.y)
     st.setSel(hit)
-    // 优先级：选中球的速度箭头尖端 > 静态体拖动 > 小球拖动 > 平移
     if (hit?.type === 'ball') {
-      const b = st.balls.find((q) => q.id === hit.id)!
-      const px = 18 / viewRef.current.scale
-      const tip = { x: b.x + b.vx * px, y: b.y + b.vy * px }
-      if (Math.hypot(w.x - tip.x, w.y - tip.y) < 14 / viewRef.current.scale) {
-        dragRef.current = { kind: 'vdrag', id: hit.id }
-        return
-      }
       dragRef.current = { kind: 'move', id: hit.id, lwx: w.x, lwy: w.y }
     } else if (hit?.type === 'static') {
       dragRef.current = { kind: 'moveStatic', id: hit.id, lwx: w.x, lwy: w.y }
