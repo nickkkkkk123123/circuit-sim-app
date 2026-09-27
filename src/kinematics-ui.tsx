@@ -339,6 +339,41 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
               }
               return lines
             })()}
+            {/* 坐标系：x 轴沿地面（向右），y 轴在 x=0（向上，刻度=离地高度），带单位刻度与箭头 */}
+            {(() => {
+              const s2 = view.scale
+              const step = s2 >= 14 ? 1 : s2 >= 6 ? 5 : 10
+              const x0 = -view.tx / s2, x1 = (vp.w - view.tx) / s2
+              const y0 = -view.ty / s2, y1 = (vp.h - view.ty) / s2
+              const els: React.ReactElement[] = []
+              const tick = 0.22, lab = 0.42, fs = 11 / s2
+              const fmt = (n: number) => (Math.round(n * 10) / 10).toString()
+              // x 轴刻度（沿地面），每 5 格标数字
+              for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) {
+                const major = Math.abs(x % (step * 5)) < 1e-6
+                if (Math.abs(x) < 1e-6) continue
+                els.push(<line key={`axt${x}`} x1={x} y1={H - tick} x2={x} y2={H} stroke="var(--ink)" strokeWidth={1.2 / s2} opacity={major ? 0.9 : 0.5} />)
+                if (major) els.push(<text key={`axl${x}`} x={x} y={H + lab + fs * 0.4} fontSize={fs} textAnchor="middle" fill="var(--muted, #889)">{fmt(x)}</text>)
+              }
+              // y 轴刻度（x=0，向上为正：标注离地高度 H-y）
+              for (let y = Math.ceil(y0 / step) * step; y <= Math.min(y1, H); y += step) {
+                const h = H - y
+                const major = Math.abs(h % (step * 5)) < 1e-6
+                if (Math.abs(h) < 1e-6) continue
+                els.push(<line key={`ayt${y}`} x1={0} y1={y} x2={tick} y2={y} stroke="var(--ink)" strokeWidth={1.2 / s2} opacity={major ? 0.9 : 0.5} />)
+                if (major) els.push(<text key={`ayl${y}`} x={-lab} y={y + fs * 0.35} fontSize={fs} textAnchor="end" fill="var(--muted, #889)">{fmt(h)}</text>)
+              }
+              // 轴线 + 箭头 + 轴名
+              const ah = 0.45, aw = 0.18
+              els.push(<line key="axX" x1={x0} y1={H} x2={x1} y2={H} stroke="var(--ink)" strokeWidth={2.5 / s2} opacity={0.85} />)
+              els.push(<polygon key="axXh" points={`${x1},${H} ${x1 - ah},${H - aw} ${x1 - ah},${H + aw}`} fill="var(--ink)" opacity={0.85} />)
+              els.push(<text key="axXn" x={x1 - 0.3} y={H - 0.5} fontSize={fs * 1.1} textAnchor="end" fill="var(--ink)" opacity={0.85}>x/m</text>)
+              els.push(<line key="axY" x1={0} y1={Math.min(y1, H + 2)} x2={0} y2={y0} stroke="var(--ink)" strokeWidth={2.5 / s2} opacity={0.85} />)
+              els.push(<polygon key="axYh" points={`0,${y0} ${-aw},${y0 + ah} ${aw},${y0 + ah}`} fill="var(--ink)" opacity={0.85} />)
+              els.push(<text key="axYn" x={0.5} y={y0 + fs * 1.2} fontSize={fs * 1.1} fill="var(--ink)" opacity={0.85}>y/m</text>)
+              els.push(<text key="axO" x={-lab} y={H + lab + fs * 0.4} fontSize={fs} textAnchor="end" fill="var(--muted, #889)">0</text>)
+              return els
+            })()}
             {s.ground && <line x1={-1000} y1={H} x2={W + 1000} y2={H} stroke="var(--ink)" strokeWidth={3 / view.scale} />}
             {/* 静态体 */}
             {s.statics.map((sh) => {
