@@ -51,6 +51,7 @@ interface KinStore {
   addBall: (wx: number, wy: number, vx: number, vy: number) => void
   addStatic: (s: Omit<Extract<StaticShape, { kind: 'seg' }>, 'id'> | Omit<Extract<StaticShape, { kind: 'arc' }>, 'id'>) => void
   moveBall: (id: number, dx: number, dy: number) => void
+  moveStatic: (id: number, dx: number, dy: number) => void
   updateBall: (id: number, patch: Partial<Ball>) => void
   updateStatic: (id: number, patch: Partial<StaticShape>) => void
   removeSel: () => void
@@ -117,6 +118,10 @@ export const useKin = create<KinStore>((set, get) => {
       // 拖拽移动不打快照（beginHistory 语义，整个手势一步）
       const { balls } = get()
       commit(balls.map((b) => (b.id === id ? { ...b, x: b.x + dx, y: b.y + dy } : b)), get().statics)
+    },
+    moveStatic: (id, dx, dy) => {
+      const { statics } = get()
+      commit(get().balls, statics.map((q) => (q.id === id ? { ...q, cx: q.cx + dx, cy: q.cy + dy } : q)))
     },
     updateBall: (id, patch) => {
       const { balls, statics } = get()

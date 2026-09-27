@@ -19,6 +19,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const dragRef = useRef<
     | { kind: 'place'; swx: number; swy: number; cwx: number; cwy: number }
     | { kind: 'move'; id: number; lwx: number; lwy: number }
+    | { kind: 'moveStatic'; id: number; lwx: number; lwy: number }
+    | { kind: 'vdrag'; id: number }
     | { kind: 'pan'; lpx: number; lpy: number }
     | null
   >(null)
@@ -153,8 +155,19 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     }
     const hit = hitTest(w.x, w.y)
     st.setSel(hit)
-    if (hit?.type === 'ball') dragRef.current = { kind: 'move', id: hit.id, lwx: w.x, lwy: w.y }
-    else dragRef.current = { kind: 'pan', lpx: e.clientX, lpy: e.clientY }
+    // 优先级：选中球的速度箭头尖端 > 静态体拖动 > 小球拖动 > 平移
+    if (hit?.type === 'ball') {
+      const b = st.balls.find((q) => q.id === hit.id)!
+      const px = 18 / viewRef.current.scale
+      const tip = { x: b.x + b.vx * px, y: b.y + b.vy * px }
+      if (Math.hypot(w.x - tip.x, w.y - tip.y) < 14 / viewRef.current.scale) {
+        dragRef.current = { kind: 'vdrag', id: hit.id }
+        return
+      }
+      dragRef.current = { kind: 'move', id: hit.id, lwx: w.x, lwy: w.y }
+    } else if (hit?.type === 'static') {
+      dragRef.current = { kind: 'moveStatic', id: hit.id, lwx: w.x, lwy: w.y }
+    } else dragRef.current = { kind: 'pan', lpx: e.clientX, lpy: e.clientY }
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -165,6 +178,16 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     else if (d.kind === 'move') {
       kinState().moveBall(d.id, w.x - d.lwx, w.y - d.lwy)
       d.lwx = w.x; d.lwy = w.y
+    } else if (d.kind === 'moveStatic') {
+      kinState().moveStatic(d.id, w.x - d.lwx, w.y - d.lwy)
+      d.lwx = w.x; d.lwy = w.y
+    } else if (d.kind === 'vdrag') {
+      // 拖速度箭头尖端 = 直接改速度矢量（箭头即把手）
+      const b = kinState().balls.find((q) => q.id === d.id)
+      if (b) {
+        const px = 18 / viewRef.current.scale
+        kinState().updateBall(d.id, { vx: (w.x - b.x) / px, vy: (w.y - b.y) / px })
+      }
     } else {
       setView((v) => ({ ...v, tx: v.tx + (e.clientX - d.lpx), ty: v.ty + (e.clientY - d.lpy) }))
       d.lpx = e.clientX; d.lpy = e.clientY
@@ -221,7 +244,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                     <input type="range" min={0} max={30} step={0.5} value={Math.min(30, v)}
                       onChange={(e) => { const a = Math.atan2(selBall.vy, selBall.vx); kinState().updateBall(selBall.id, { vx: +e.target.value * Math.cos(a), vy: +e.target.value * Math.sin(a) }) }} />
                   </label>
-                  <label>方向 {dir.toFixed(0)}°
+                  <label>速度方向 {dir.toFixed(0)}°
                     <input type="range" min={-180} max={180} step={5} value={Math.round(dir)}
                       onChange={(e) => { const a = (+e.target.value * Math.PI) / 180; const nv = Math.hypot(selBall.vx, selBall.vy); kinState().updateBall(selBall.id, { vx: nv * Math.cos(a), vy: nv * Math.sin(a) }) }} />
                   </label>
@@ -351,6 +374,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                 els.push(vec(0, b.vy * px, '#e0b34e', 'vy', 1.5, `${0.25} ${0.18}`, 0.85))
                 els.push(vec(b.vx * px, b.vy * px, '#5ee6c8', 'v'))
                 arrow(b.x + b.vx * px, b.y + b.vy * px, b.vx, b.vy, '#5ee6c8', 'va')
+                // 箭头尖端隐形把手：按住拖动直接改速度
+                els.push(<circle key="vh" cx={b.x + b.vx * px} cy={b.y + b.vy * px} r={14 / view.scale} fill="transparent" style={{ cursor: 'grab' }}><title>拖动此箭头改变初速度</title></circle>)
               }
               const a = s.running ? accelRef.current.get(b.id) : (s.gOn ? { ax: 0, ay: s.g } : undefined)
               if (a) {
@@ -360,6 +385,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                   els.push(vec(0, a.ay * px, '#e08a97', 'ay', 1.5, `${0.25} ${0.18}`, 0.85))
                   els.push(vec(a.ax * px, a.ay * px, '#e08a97', 'a'))
                   arrow(b.x + a.ax * px, b.y + a.ay * px, a.ax, a.ay, '#e08a97', 'aa')
+                  els.push(<circle key="at" cx={b.x + a.ax * px} cy={b.y + a.ay * px} r={12 / view.scale} fill="transparent"><title>加速度由受力（重力/碰撞）实时决定，不可直接拖拽</title></circle>)
                 }
               }
               els.push(<text key="vt" x={b.x} y={b.y - 0.6} fontSize={12 / view.scale} fill="#5ee6c8" textAnchor="middle">v={sp.toFixed(1)}m/s</text>)
