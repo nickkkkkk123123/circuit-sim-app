@@ -23,6 +23,21 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     | null
   >(null)
   const [, tickRender] = useState(0)
+  // 视口实测尺寸（ResizeObserver）：网格/矢量全部按真实画布大小绘制，不再硬编码 800×450
+  const [vp, setVp] = useState({ w: 800, h: 450 })
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect()
+      setVp({ w: Math.max(320, r.width), h: Math.max(240, r.height) })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // 选中球的实时加速度（有限差分：含碰撞冲量，比"只有重力"诚实）
+  const accelRef = useRef<Map<number, { ax: number; ay: number }>>(new Map())
+  const prevVelRef = useRef<Map<number, { vx: number; vy: number }>>(new Map())
 
   // 坐标转换：getScreenCTM 直接把屏幕事件坐标映射到世界米——缩放/平移全自动正确
   const toWorld = (e: React.PointerEvent | React.MouseEvent): { x: number; y: number } => {
@@ -42,8 +57,18 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       const dt = Math.min((now - last) / 1000, 0.05)
       last = now
       const st = kinState()
+      // 记录步进前速度 → 步进后差分出真实加速度（含碰撞/接触力）
+      const prevVel = new Map<number, { vx: number; vy: number }>()
+      for (const b of st.balls) prevVel.set(b.id, { vx: b.vx, vy: b.vy })
       const params: SandboxParams = { g: st.gOn ? st.g : 0, W, H, ground: st.ground }
       stepSandbox(st.balls, st.statics, params, dt, 4)
+      const acc = accelRef.current
+      acc.clear()
+      for (const b of st.balls) {
+        const pv = prevVel.get(b.id)
+        if (pv) acc.set(b.id, { ax: (b.vx - pv.vx) / dt, ay: (b.vy - pv.vy) / dt })
+      }
+      prevVelRef.current = prevVel
       if (!st.ground) {
         const alive = st.balls.filter((b) => b.y < H + 15)
         if (alive.length !== st.balls.length) useKin.setState({ balls: alive })
@@ -275,8 +300,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
             {(() => {
               const s2 = view.scale
               const step = s2 >= 14 ? 1 : s2 >= 6 ? 5 : 10
-              const x0 = -view.tx / s2, x1 = (800 - view.tx) / s2
-              const y0 = -view.ty / s2, y1 = (450 - view.ty) / s2
+              const x0 = -view.tx / s2, x1 = (vp.w - view.tx) / s2
+              const y0 = -view.ty / s2, y1 = (vp.h - view.ty) / s2
               const lines: React.ReactElement[] = []
               for (let x = Math.ceil(x0 / step) * step; x <= x1; x += step) {
                 const major = Math.abs(x % (step * 5)) < 1e-6
@@ -296,7 +321,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                 : arcPoints(sh).map((q) => [q.x, q.y])
               const d = pts.map(([x, y]) => `${x},${y}`).join(' ')
               const isSel = s.sel?.type === 'static' && s.sel.id === sh.id
-              return <polyline key={sh.id} points={d} fill="none" stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'var(--ink)'} strokeWidth={(isSel ? 0.3 : 0.22) * 12 / view.scale * view.scale / 12 + 0.15} strokeLinejoin="round" strokeLinecap="round" />
+              return <polyline key={sh.id} points={d} fill="none" stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'var(--ink)'} strokeWidth={(isSel ? 4 : 2.5) / view.scale} strokeLinejoin="round" strokeLinecap="round" />
             })}
             {s.trails && s.balls.map((b) => {
               const arr = trailRef.current.get(b.id) ?? []
@@ -306,6 +331,40 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
               const isSel = s.sel?.type === 'ball' && s.sel.id === b.id
               return <circle key={b.id} cx={b.x} cy={b.y} r={b.r} fill={BALL_COLORS[(b.id - 1) % BALL_COLORS.length]} stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'none'} strokeWidth={0.15} opacity={0.9} />
             })}
+            {/* 选中球的速度/加速度矢量（含正交分量分解，屏幕定长像素比例） */}
+            {selBall && (() => {
+              const b = selBall
+              const px = 18 / view.scale // 每像素→世界换算：18px ≙ 1 m/s / 1 m/s²
+              const els: React.ReactElement[] = []
+              const arrow = (x: number, y: number, ux: number, uy: number, color: string, key: string) => {
+                const L = 10 / view.scale
+                const ang = Math.atan2(uy, ux)
+                const a1 = ang + Math.PI - 0.42, a2 = ang + Math.PI + 0.42
+                els.push(<polygon key={key} points={`${x},${y} ${x + L * Math.cos(a1)},${y + L * Math.sin(a1)} ${x + L * Math.cos(a2)},${y + L * Math.sin(a2)}`} fill={color} />)
+              }
+              const vec = (dx: number, dy: number, color: string, key: string, w = 2, dash?: string, op = 1) => (
+                <line key={key} x1={b.x} y1={b.y} x2={b.x + dx} y2={b.y + dy} stroke={color} strokeWidth={w / view.scale} strokeDasharray={dash} opacity={op} />
+              )
+              const sp = Math.hypot(b.vx, b.vy)
+              if (sp > 0.05) {
+                els.push(vec(b.vx * px, 0, '#e0b34e', 'vx', 1.5, `${0.25} ${0.18}`, 0.85))
+                els.push(vec(0, b.vy * px, '#e0b34e', 'vy', 1.5, `${0.25} ${0.18}`, 0.85))
+                els.push(vec(b.vx * px, b.vy * px, '#5ee6c8', 'v'))
+                arrow(b.x + b.vx * px, b.y + b.vy * px, b.vx, b.vy, '#5ee6c8', 'va')
+              }
+              const a = s.running ? accelRef.current.get(b.id) : (s.gOn ? { ax: 0, ay: s.g } : undefined)
+              if (a) {
+                const am = Math.hypot(a.ax, a.ay)
+                if (am > 0.3) {
+                  els.push(vec(a.ax * px, 0, '#e08a97', 'ax', 1.5, `${0.25} ${0.18}`, 0.85))
+                  els.push(vec(0, a.ay * px, '#e08a97', 'ay', 1.5, `${0.25} ${0.18}`, 0.85))
+                  els.push(vec(a.ax * px, a.ay * px, '#e08a97', 'a'))
+                  arrow(b.x + a.ax * px, b.y + a.ay * px, a.ax, a.ay, '#e08a97', 'aa')
+                }
+              }
+              els.push(<text key="vt" x={b.x} y={b.y - 0.6} fontSize={12 / view.scale} fill="#5ee6c8" textAnchor="middle">v={sp.toFixed(1)}m/s</text>)
+              return els
+            })()}
             {dragRef.current?.kind === 'place' && (() => {
               const d = dragRef.current
               return (
