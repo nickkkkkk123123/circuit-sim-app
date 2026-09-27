@@ -85,7 +85,7 @@ export const useKin = create<KinStore>((set, get) => {
   return {
     balls: saved?.balls ?? [],
     statics: saved?.statics ?? [],
-    tool: 'ball',
+    tool: 'select',
     sel: null,
     g: 9.8,
     gOn: true,
@@ -103,14 +103,15 @@ export const useKin = create<KinStore>((set, get) => {
       const b = makeBall(nextId(), wx, wy, 0.7, vx, vy)
       const { balls, statics } = get()
       commit([...balls, b], statics)
-      set({ sel: { type: 'ball', id: b.id } })
+      // 放置完成自动切回选择工具（一次性工具语义：放置≠连续铺球模式）
+      set({ sel: { type: 'ball', id: b.id }, tool: 'select' })
     },
     addStatic: (s) => {
       pushUndo()
       const full = { ...s, id: nextId() } as StaticShape
       const { balls, statics } = get()
       commit(balls, [...statics, full])
-      set({ sel: { type: 'static', id: full.id } })
+      set({ sel: { type: 'static', id: full.id }, tool: 'select' })
     },
     moveBall: (id, dx, dy) => {
       // 拖拽移动不打快照（beginHistory 语义，整个手势一步）
