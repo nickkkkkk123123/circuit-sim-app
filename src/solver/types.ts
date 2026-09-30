@@ -1,5 +1,5 @@
 // 电路元件与连线的数据模型（与渲染彻底解耦）
-export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led' | 'capacitor' | 'acsource' | 'relay' | 'gate'
+export type CompKind = 'battery' | 'resistor' | 'bulb' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'spdt' | 'led' | 'capacitor' | 'acsource' | 'relay' | 'gate' | 'motor'
 
 export interface BaseComp {
   id: string
@@ -170,6 +170,14 @@ export interface Relay extends BaseComp {
   kind: 'relay'
 }
 
+// 电动机：纯阻线圈模型（可调线圈电阻）。发电输出两种集流方式：
+// dc=换向器（脉动直流，直流电机本征）；ac=滑环（正弦交流，e = K_E·n·sin(2π·|n|/60·t)，瞬态引擎逐步覆盖）
+export interface Motor extends BaseComp {
+  kind: 'motor'
+  r: number // 线圈电阻 Ω（1~50 可调）
+  mode?: 'dc' | 'ac' // 发电集流方式；缺省 dc（旧存档兼容）
+}
+
 // 逻辑门：VCC(c)/GND(d) 必须接电源，输入 a(/b)，输出 p。C=εS/d 同款教学宏——门内部=开关+电源
 // NAND/NOR=AND/OR 取反（万能门），XOR=异或（加法器地基）；NOT 只用输入 a
 export interface Gate extends BaseComp {
@@ -206,7 +214,13 @@ export const LED_I_FULL = 0.02
 export const METER_G_R = 100
 export const METER_G_IG = 0.001
 
-export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode | Capacitor | ACSource | Relay | Gate
+// 电动机双模式：电动 n = P·K_RPM（无上限）；发电（手动拖转）E = K_E·n，极性随拖动方向
+export const MOTOR_K_RPM = 1500 // 电动：每瓦机械转速 r/min/W
+export const MOTOR_K_E = 0.002 // 发电：电动势系数 V/(r/min)（3000 r/min → 6V）
+export const MOTOR_GEN_GEAR = 80 // 手摇增速比（手转 1 圈 = 转子 80 圈）
+export const MOTOR_DECAY_TAU = 3 // 发电态摩擦衰减时间常数 s
+
+export type Comp = Battery | Resistor | Bulb | Switch | Rheostat | Voltmeter | Ammeter | Galvanometer | Ohmmeter | Multimeter | Spdt | Diode | Capacitor | ACSource | Relay | Gate | Motor
 
 export type TerminalId = 'a' | 'b' | 'c' | 'd' | 'p'
 
@@ -248,6 +262,7 @@ export const TERMINAL_OFFSET: Record<CompKind, number> = {
   gate: 30,
   spdt: 28,
   led: 24,
+  motor: 30,
 }
 
 // 展开态滑动变阻器：金属杆距中心的高度
@@ -347,5 +362,7 @@ export function defaultComp(kind: CompKind, id: string, x: number, y: number): C
       return { id, kind, x, y, rot: 0 }
     case 'gate':
       return { id, kind, x, y, rot: 0, type: 'AND' }
+    case 'motor':
+      return { id, kind, x, y, rot: 0, r: 10, mode: 'dc' }
   }
 }

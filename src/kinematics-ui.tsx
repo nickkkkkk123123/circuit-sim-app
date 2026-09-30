@@ -6,13 +6,19 @@ import { segEndpoints, arcPoints } from './solver/kinematics-sandbox'
 import { useKin, kinState, type KinSel, type KinTool } from './sandbox-store'
 
 const BALL_COLORS = ['#5e6ad2', '#e08a97', '#4aa3a2', '#c9a227', '#7a9e4f', '#b06ad2', '#d26a5e', '#6ab0d2']
-const W = 42, H = 20 // 场地 m（世界坐标：y 向下=重力向下）
 
 export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const s = useKin()
-  const [view, setView] = useState({ scale: 18, tx: 20, ty: 70 })
+  const W = s.fw, H = s.fh // 场地尺寸（侧栏可调；世界坐标：y 向下=重力向下）
+  const [view, setView] = useState({ scale: 9, tx: 20, ty: 180 })
   const viewRef = useRef(view)
   viewRef.current = view
+  // 复位视图：按画布实测尺寸自适应——场地完整入画、地面贴底部（100×40 大场地写死视图必然失配）
+  const defaultView = (): { scale: number; tx: number; ty: number } => {
+    const { w, h } = vpRef.current
+    const scale = Math.max(4, Math.min(30, Math.min(w / (W + 30), h / (H + 26))))
+    return { scale, tx: 20, ty: h - (H + 4) * scale }
+  }
   const svgRef = useRef<SVGSVGElement | null>(null)
   const worldRef = useRef<SVGGElement | null>(null)
   const trailRef = useRef<Map<number, string[]>>(new Map())
@@ -59,10 +65,13 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       const dt = Math.min((now - last) / 1000, 0.05)
       last = now
       const st = kinState()
+      // W/H 必须从 store 实时读：effect 只依赖 s.running，闭包里的 W/H 是启动时的快照，
+      // 运行中改场地尺寸若走闭包，物理边界不更新（表现为"改了要重启才生效"）
+      const W = st.fw, H = st.fh
       // 记录步进前速度 → 步进后差分出真实加速度（含碰撞/接触力）
       const prevVel = new Map<number, { vx: number; vy: number }>()
       for (const b of st.balls) prevVel.set(b.id, { vx: b.vx, vy: b.vy })
-      const params: SandboxParams = { g: st.gOn ? st.g : 0, W, H, ground: st.ground }
+      const params: SandboxParams = { g: st.gOn ? st.g : 0, W, H, ground: st.ground, unlimited: st.unlimited }
       stepSandbox(st.balls, st.statics, params, dt, 4)
       const acc = accelRef.current
       acc.clear()
@@ -71,8 +80,9 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         if (pv) acc.set(b.id, { ax: (b.vx - pv.vx) / dt, ay: (b.vy - pv.vy) / dt })
       }
       prevVelRef.current = prevVel
-      if (!st.ground) {
-        const alive = st.balls.filter((b) => b.y < H + 15)
+      if (!st.ground && !st.unlimited) {
+        // 开放空间回收：掉出场地下方或横向飞出边界都回收（无限制模式永不回收）
+        const alive = st.balls.filter((b) => b.y < H + 15 && b.x > -15 && b.x < W + 15)
         if (alive.length !== st.balls.length) useKin.setState({ balls: alive })
       }
       if (st.trails) {
@@ -91,15 +101,26 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     return () => cancelAnimationFrame(raf)
   }, [s.running])
 
-  // 滚轮缩放（光标锚定，非 passive 原生监听）
+  // 滚轮缩放（光标锚定，非 passive 原生监听）。锚点用实测画布尺寸 vp：
+  // 硬编码 800×450 时代码画布早已不是这个尺寸，锚点错位会让缩放看起来"失效/乱飘"
+  const vpRef = useRef(vp)
+  vpRef.current = vp
+  // 首次实测到画布尺寸 → 视图吸附到适配默认（大场地入画、地面贴底）
+  const viewInitRef = useRef(false)
+  useEffect(() => {
+    if (!viewInitRef.current && vp.w > 320) {
+      viewInitRef.current = true
+      setView(defaultView())
+    }
+  }, [vp])
   useEffect(() => {
     const el = svgRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const r = el.getBoundingClientRect()
-      const px = ((e.clientX - r.left) / r.width) * 800
-      const py = ((e.clientY - r.top) / r.height) * 450
+      const px = ((e.clientX - r.left) / r.width) * vpRef.current.w
+      const py = ((e.clientY - r.top) / r.height) * vpRef.current.h
       setView((v) => {
         const scale = Math.max(4, Math.min(60, v.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)))
         const f = scale / v.scale
@@ -114,7 +135,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') kinState().removeSel()
-      if (e.key === '0') setView({ scale: 18, tx: 20, ty: 70 })
+      if (e.key === '0') setView(defaultView())
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -244,7 +265,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
             <p className="hint">属性 · 小球</p>
             {(() => {
               const v = Math.hypot(selBall.vx, selBall.vy)
-              const dir = (Math.atan2(selBall.vy, selBall.vx) * 180) / Math.PI
+              // 方向角用数学惯例（逆时针为正，y 向上）：屏幕 y 向下，atan2 里取 -vy 翻转
+              const dir = (Math.atan2(-selBall.vy, selBall.vx) * 180) / Math.PI
               return (
                 <>
                   <label>速度 |v| {v.toFixed(1)}m/s
@@ -253,7 +275,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                   </label>
                   <label>速度方向 {dir.toFixed(0)}°
                     <input type="range" min={-180} max={180} step={5} value={Math.round(dir)}
-                      onChange={(e) => { const a = (+e.target.value * Math.PI) / 180; const nv = Math.hypot(selBall.vx, selBall.vy); kinState().updateBall(selBall.id, { vx: nv * Math.cos(a), vy: nv * Math.sin(a) }) }} />
+                      onChange={(e) => { const a = (+e.target.value * Math.PI) / 180; const nv = Math.hypot(selBall.vx, selBall.vy); kinState().updateBall(selBall.id, { vx: nv * Math.cos(a), vy: -nv * Math.sin(a) }) }} />
                   </label>
                   <label>质量 {selBall.m.toFixed(1)}kg
                     <input type="range" min={0.5} max={20} step={0.5} value={selBall.m}
@@ -301,6 +323,25 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
           <input type="checkbox" checked={s.ground} onChange={(e) => kinState().setGround(e.target.checked)} />地面
         </label>
         <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={s.unlimited} onChange={(e) => kinState().setUnlimited(e.target.checked)} />场地无限制（无墙不回收）
+        </label>
+        <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: s.unlimited ? 0.4 : 1 }}>
+          场地宽 {s.fw}m
+          <input type="range" min={20} max={200} step={5} value={s.fw} disabled={s.unlimited}
+            onChange={(e) => kinState().setFw(+e.target.value)} />
+          <input type="number" min={20} max={200} step={5} value={s.fw} disabled={s.unlimited}
+            style={{ width: 60, flex: 'none' }}
+            onChange={(e) => kinState().setFw(Math.max(20, Math.min(200, +e.target.value || 20)))} />
+        </label>
+        <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: s.unlimited ? 0.4 : 1 }}>
+          场地高 {s.fh}m
+          <input type="range" min={10} max={100} step={5} value={s.fh} disabled={s.unlimited}
+            onChange={(e) => kinState().setFh(+e.target.value)} />
+          <input type="number" min={10} max={100} step={5} value={s.fh} disabled={s.unlimited}
+            style={{ width: 60, flex: 'none' }}
+            onChange={(e) => kinState().setFh(Math.max(10, Math.min(100, +e.target.value || 10)))} />
+        </label>
+        <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={s.trails} onChange={(e) => kinState().setTrails(e.target.checked)} />轨迹
         </label>
         <p className="hint" style={{ margin: 0 }}>{s.balls.length} 个球 · 总动能 {ke.toFixed(1)} J</p>
@@ -310,7 +351,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         </div>
         <div className="pal-row">
           <button onClick={() => { kinState().clear(); trailRef.current.clear() }}>🗑 清空</button>
-          <button onClick={() => setView({ scale: 18, tx: 20, ty: 70 })}>⤢ 复位视图</button>
+          <button onClick={() => setView(defaultView())}>⤢ 复位视图</button>
         </div>
         <p className="tips">
           小球+拖拽初速 = 斜抛；<br />
@@ -377,6 +418,19 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
               els.push(<text key="axYn" x={0.5} y={y0 + fs * 1.2} fontSize={fs * 1.1} fill="var(--ink)" opacity={0.85}>y/m</text>)
               els.push(<text key="axO" x={-lab} y={H + lab + fs * 0.4} fontSize={fs} textAnchor="end" fill="var(--muted, #889)">0</text>)
               return els
+            })()}
+            {s.ground && !s.unlimited && (() => {
+              // 地面开启：封闭场地——地下阴影区 + 左右墙线（墙是真实存在的碰撞体，必须看得见）
+              const s2 = view.scale
+              const x0 = -view.tx / s2, x1 = (vp.w - view.tx) / s2
+              const y0 = -view.ty / s2, y1 = (vp.h - view.ty) / s2
+              return (
+                <>
+                  <rect x={x0} y={H} width={Math.max(0, x1 - x0)} height={Math.max(0, y1 - H)} fill="var(--grid-dot)" opacity={0.5} />
+                  <line x1={0} y1={Math.min(y0, H)} x2={0} y2={H} stroke="var(--ink)" strokeWidth={2 / view.scale} opacity={0.5} />
+                  <line x1={W} y1={Math.min(y0, H)} x2={W} y2={H} stroke="var(--ink)" strokeWidth={2 / view.scale} opacity={0.5} />
+                </>
+              )
             })()}
             {s.ground && <line x1={-1000} y1={H} x2={W + 1000} y2={H} stroke="var(--ink)" strokeWidth={3 / view.scale} />}
             {/* 静态体 */}

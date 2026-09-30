@@ -499,4 +499,62 @@ describe('MNA 求解器', () => {
       expect(r.ohm?.['m1']).toBeCloseTo(0.004 + 10 * 0.104 / 10.104, 3)
     })
   })
+
+  // 电动机：纯阻线圈模型，功率→转速映射在显示层
+  describe('电动机', () => {
+    function motorCircuit(motorR: number): Circuit {
+      const comps: Comp[] = [
+        { id: 'b1', kind: 'battery', x: 0, y: 0, rot: 0, emf: 6, r: 0.5 },
+        { id: 'm1', kind: 'motor', x: 0, y: 0, rot: 0, r: motorR },
+      ]
+      const wires: Wire[] = [
+        { id: 'w1', a: 'b1:a', b: 'm1:a' },
+        { id: 'w2', a: 'm1:b', b: 'b1:b' },
+      ]
+      return { comps, wires }
+    }
+
+    it('电流 = E / (r内 + 线圈R)，呈纯阻性', () => {
+      const r = solve(motorCircuit(10))
+      expect(r.byComp['m1'].current).toBeCloseTo(6 / 10.5, 3)
+    })
+
+    it('功率 = I²R（机械输出）', () => {
+      const r = solve(motorCircuit(10))
+      const m = r.byComp['m1']
+      // I = 6 / (0.5 + 10 + 导线0.004)
+      expect(m.power).toBeCloseTo((6 / 10.504) ** 2 * 10, 3)
+    })
+
+    it('线圈电阻越大 → 电流越小、功率越低（电阻控速）', () => {
+      const small = solve(motorCircuit(5))
+      const big = solve(motorCircuit(20))
+      expect(big.byComp['m1'].current).toBeLessThan(small.byComp['m1'].current)
+      expect(big.byComp['m1'].power).toBeLessThan(small.byComp['m1'].power)
+    })
+
+    it('断路时功率归零（停转）', () => {
+      const c = motorCircuit(10)
+      ;(c.comps[0] as { emf: number }).emf = 0
+      const r = solve(c)
+      expect(r.byComp['m1'].power).toBeCloseTo(0, 6)
+    })
+
+    it('发电模式：转速 3000 r/min → 电动势 6V；与电池反接时抵消（电流≈0）', () => {
+      // motor 与电池同端子相连（a—a、b—b），同号电动势方向相对 → 抵消
+      const r = solve(motorCircuit(10), { motorN: { m1: 3000 } })
+      expect(r.byComp['m1'].current).toBeCloseTo(0, 2)
+    })
+
+    it('发电模式：转向相反 → 电动势与电池同向叠加（总 12V）', () => {
+      const r = solve(motorCircuit(10), { motorN: { m1: -3000 } })
+      expect(r.byComp['m1'].current).toBeCloseTo(12 / 10.504, 2)
+    })
+
+    it('发电模式：无电池空载回路 → 无电流（开路不发电流）', () => {
+      const comps: Comp[] = [{ id: 'm1', kind: 'motor', x: 0, y: 0, rot: 0, r: 10 }]
+      const r = solve({ comps, wires: [] }, { motorN: { m1: 3000 } })
+      expect(r.byComp['m1'].current).toBeCloseTo(0, 6)
+    })
+  })
 })

@@ -45,6 +45,9 @@ interface KinStore {
   ground: boolean
   trails: boolean
   running: boolean
+  fw: number // 场地宽 m（可调，墙/回收/坐标轴/阴影全部随动）
+  fh: number // 场地高 m（地面线位置）
+  unlimited: boolean // 场地无限制：无墙无回收，球飞多远都保留
   histCount: number
   setTool: (t: KinTool) => void
   setSel: (s: KinSel) => void
@@ -62,6 +65,9 @@ interface KinStore {
   setGround: (v: boolean) => void
   setTrails: (v: boolean) => void
   setRunning: (v: boolean) => void
+  setFw: (v: number) => void
+  setFh: (v: number) => void
+  setUnlimited: (v: boolean) => void
 }
 
 export const useKin = create<KinStore>((set, get) => {
@@ -93,6 +99,9 @@ export const useKin = create<KinStore>((set, get) => {
     ground: true,
     trails: true,
     running: false,
+    fw: 100,
+    fh: 40,
+    unlimited: false,
     histCount: 0,
 
     setTool: (tool) => set({ tool, sel: null }),
@@ -158,6 +167,9 @@ export const useKin = create<KinStore>((set, get) => {
     setGround: (ground) => set({ ground }),
     setTrails: (trails) => set({ trails }),
     setRunning: (running) => set({ running }),
+    setFw: (fw) => set({ fw }),
+    setFh: (fh) => set({ fh }),
+    setUnlimited: (unlimited) => set({ unlimited }),
   }
 })
 

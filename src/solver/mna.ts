@@ -1,11 +1,11 @@
 // MNA 改进节点法求解器（纯 TS，与 UI 零耦合）
 // 电源采用诺顿等效（电导 + 注入电流），避免电压源行，全电路纯电导矩阵
 import type { Circuit, Comp } from './types'
-import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf, RELAY_ITH, RELAY_COIL_R, GATE_VTH, GATE_R_ON, GATE_R_PULL, gateTruth } from './types'
+import { terminalsOf, METER_G_R, LED_VF, LED_R_ON, LED_R_OFF, meterRangeOf, multiKindOf, multiRangeOf, RELAY_ITH, RELAY_COIL_R, GATE_VTH, GATE_R_ON, GATE_R_PULL, gateTruth, MOTOR_K_E } from './types'
 
 export interface BranchResult {
   refId: string // 所属元件 id，导线为 wire id（元件内部辅助支路带 : 后缀，不入 byComp）
-  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'led'
+  kind: 'wire' | 'battery' | 'resistor' | 'bulb' | 'switch-open' | 'switch' | 'rheostat' | 'voltmeter' | 'ammeter' | 'galvanometer' | 'ohmmeter' | 'multimeter' | 'led' | 'motor'
   dv: number // 元件两端电压差（na - nb）
   current: number // 流过电流（绝对值）
   power: number // 电功率（绝对值）
@@ -69,9 +69,11 @@ function solveGauss(G: number[][], I: number[]): number[] {
 }
 
 // 热启动种子：上一次求解的状态（门输出/继电器/LED），反馈电路（锁存器）靠它记住历史
+// motorN：电动机发电态转速（带符号 r/min，非零 = 手动拖转中，支路带电动势 E=K_E·n）
 export interface SolveHints {
   gateOut?: Record<string, boolean>
   relayOn?: Record<string, boolean>
+  motorN?: Record<string, number>
 }
 
 export function solve(circuit: Circuit, hints?: SolveHints): SolveResult {
@@ -118,8 +120,8 @@ export function solve(circuit: Circuit, hints?: SolveHints): SolveResult {
     for (const b of branches) {
       const g = 1 / b.r
       gAddM(G, b.na, b.nb, g)
-      if (b.kind === 'battery' || b.kind === 'led') {
-        const e = (b as { emf: number }).emf!
+      if (b.kind === 'battery' || b.kind === 'led' || b.kind === 'motor') {
+        const e = (b as { emf?: number }).emf ?? 0
         I[idx.get(b.na)!] += e * g
         I[idx.get(b.nb)!] -= e * g
       }
@@ -156,6 +158,17 @@ export function solve(circuit: Circuit, hints?: SolveHints): SolveResult {
       case 'bulb':
         addRes(c.id, 'bulb', na, nb, c.r)
         break
+      case 'motor': {
+        // 电动机：默认电动模式（线圈纯阻，P=I²R 即机械输出）；发电模式（手动拖转）带电动势 E=K_E·n，
+        // 极性随拖动方向（n 带符号），与电池同族支路（诺顿注入）
+        const n = hints?.motorN?.[c.id] ?? 0
+        if (Math.abs(n) > 1e-6) {
+          branches.push({ refId: c.id, kind: 'motor', na, nb, r: Math.max(c.r, 0.01), emf: MOTOR_K_E * n })
+        } else {
+          addRes(c.id, 'motor', na, nb, Math.max(c.r, 0.01))
+        }
+        break
+      }
       case 'switch':
         addRes(c.id, c.closed ? 'switch' : 'switch-open', na, nb, c.closed ? 0.01 : 1e9)
         break
@@ -340,7 +353,7 @@ export function solve(circuit: Circuit, hints?: SolveHints): SolveResult {
   for (const b of net.branches) {
     const dv = V[idx.get(b.na)!] - V[idx.get(b.nb)!]
     // 电源/LED 支路含电动势：I = (emf − dv)/r；纯电阻支路：I = dv/r
-    const current = b.kind === 'battery' || b.kind === 'led' ? Math.abs((b.emf! - dv) / b.r) : Math.abs(dv / b.r)
+    const current = b.kind === 'battery' || b.kind === 'led' || b.kind === 'motor' ? Math.abs(((b.emf ?? 0) - dv) / b.r) : Math.abs(dv / b.r)
     const power = Math.abs(current * dv)
     results.push({ refId: b.refId, kind: b.kind, dv, current, power })
     // 内部辅助支路（refId 带 :）与导线不入 byComp

@@ -4,16 +4,17 @@
 // 状态量 = 电荷 Q（不是电压）：平行板实验中 Q 不变而 C 变（拖动极板）时，U = Q/C 才会正确升高。
 // 交流源：每步 emf = E·sin(2πf·(t+dt/2))（中点取样），引擎维护绝对仿真时间 t。
 import type { Circuit } from './types'
-import { capC, multiKindOf } from './types'
+import { capC, multiKindOf, MOTOR_K_E } from './types'
 import { solve, type SolveResult } from './mna'
 
 export interface TransientState {
   qcap: Record<string, number> // 电容 id → 极板电荷 Q（C）
   t: number // 仿真时间（秒）
   acAcc: Record<string, number> // 万用表交流档（ACV/ACA）瞬时平方的指数滑动平均（EMA，τ=30ms）；读数 = √值
+  motorN?: Record<string, number> // 电动机发电态转速（带符号 r/min，App 每帧喂入）
 }
 
-export const emptyTransient = (): TransientState => ({ qcap: {}, t: 0, acAcc: {} })
+export const emptyTransient = (): TransientState => ({ qcap: {}, t: 0, acAcc: {}, motorN: {} })
 
 /** 单步瞬态求解：dt 为本步时长（秒）；返回新状态与该步的解 */
 export function stepTransient(circuit: Circuit, state: TransientState, dt: number): { result: SolveResult; state: TransientState } {
@@ -26,6 +27,18 @@ export function stepTransient(circuit: Circuit, state: TransientState, dt: numbe
     }
     if (c.kind === 'acsource') {
       return { id: c.id, kind: 'battery' as const, x: c.x, y: c.y, rot: c.rot, emf: c.e * Math.sin(2 * Math.PI * c.f * tMid), r: Math.max(c.r, 1e-3), expanded: false }
+    }
+    if (c.kind === 'motor') {
+      // 发电态电动机 → 电池支路（静止 = 纯阻，落回原样由 solve 处理）：
+      // 滑环交流：e = K_E·n·sin(2π·(|n|/60)·t)，f = 转速/60（3000 r/min → 50Hz 工频）
+      // 换向器直流：e = K_E·n 恒定（不转出交流的半波脉动近似为平直，教学模型）
+      const n = state.motorN?.[c.id] ?? 0
+      if (Math.abs(n) > 1e-6) {
+        const emf = c.mode === 'ac'
+          ? MOTOR_K_E * n * Math.sin(2 * Math.PI * (Math.abs(n) / 60) * tMid)
+          : MOTOR_K_E * n
+        return { id: c.id, kind: 'battery' as const, x: c.x, y: c.y, rot: c.rot, emf, r: Math.max(c.r, 1e-3), expanded: false }
+      }
     }
     return c
   })
@@ -53,5 +66,5 @@ export function stepTransient(circuit: Circuit, state: TransientState, dt: numbe
     const prev = acAcc[c.id] ?? 0
     acAcc[c.id] = prev + (x * x - prev) * alpha
   }
-  return { result, state: { qcap, t: state.t + dt, acAcc } }
+  return { result, state: { qcap, t: state.t + dt, acAcc, motorN: state.motorN } }
 }

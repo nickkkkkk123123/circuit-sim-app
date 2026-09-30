@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, editorState, STORAGE_KEY } from './store'
 import { solve, type SolveResult } from './solver/mna'
 import { stepTransient, type TransientState } from './solver/transient'
-import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts, type Gate } from './solver/types'
+import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, MOTOR_K_RPM, MOTOR_K_E, MOTOR_GEN_GEAR, MOTOR_DECAY_TAU, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts, type Gate } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { KinematicsLab } from './kinematics-ui'
 import { THEME as T } from './theme'
@@ -52,6 +52,7 @@ const KIND_NAME: Record<CompKind, string> = {
   led: '二极管',
   bulb: '小灯泡',
   switch: '开关',
+  motor: '电动机',
 }
 
 
@@ -67,7 +68,7 @@ function useCursorPos(svgRef: React.RefObject<SVGSVGElement | null>, worldRef: R
 }
 
 /** 元件符号渲染（IEC 风格，中心对齐） */
-function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relayOn, gateOut, multiRms, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown }: {
+function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relayOn, gateOut, multiRms, spinAngle, spinN, spinGen, onPointerDown, onContextMenu, onSliderPointerDown, onSwitchPointerDown, onDialOpen, onPlatePointerDown, onMotorPointerDown }: {
   c: Comp
   selected: boolean
   solved?: { current: number; power: number; dv: number }
@@ -83,6 +84,10 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
   relayOn?: boolean // 继电器吸合状态
   gateOut?: boolean // 逻辑门输出状态
   multiRms?: number | null // 万用表交流档的真有效值（瞬态引擎 EMA 的 √；null=引擎未运行）
+  spinAngle?: number // 电动机转子累计角度 deg（rAF 逐帧推进）
+  spinN?: number // 电动机当前转速（带符号 r/min）
+  spinGen?: boolean // 发电模式（手动拖转中）
+  onMotorPointerDown?: (e: React.PointerEvent, c: Comp) => void
 }) {
   const d = TERMINAL_OFFSET[c.kind]
   const stroke = selected ? T.inkSelected : T.ink
@@ -368,6 +373,34 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
           </>
         )
       })()}
+      {c.kind === 'motor' && (() => {
+        // 电动机：圆圈 + M（GB 电机符号）+ 十字辐条，整个图标随转速真实旋转（rAF 推进角度）；
+        // 电动模式显示转速（无上限），发电模式（手动拖转）显示发电电压
+        const n = spinN ?? 0
+        const gen = !!spinGen && Math.abs(n) > 0.5
+        const running = Math.abs(n) > 0.5
+        const isAc = (c as { mode?: 'dc' | 'ac' }).mode === 'ac'
+        return (
+          <>
+            <text x={0} y={-30} textAnchor="middle" fontSize={12} fontWeight={600} fill={running ? T.readout : T.label}>
+              {gen
+                ? `发电 ${(MOTOR_K_E * Math.abs(n)).toFixed(2)}V${isAc ? '~' : ''} · ${Math.round(Math.abs(n))} r/min`
+                : running ? `${Math.round(n)} r/min` : '停转'}
+            </text>
+            <line x1={-26} y1={0} x2={-14} y2={0} stroke={stroke} strokeWidth={2} />
+            <g transform={`rotate(${spinAngle ?? 0})`}>
+              <line x1={0} y1={-9} x2={0} y2={9} stroke={stroke} strokeWidth={1.5} opacity={0.4} />
+              <line x1={-9} y1={0} x2={9} y2={0} stroke={stroke} strokeWidth={1.5} opacity={0.4} />
+              <circle r={13} fill="none" stroke={stroke} strokeWidth={2.5} />
+              <text x={0} y={5} textAnchor="middle" fontSize={14} fontWeight={700} fill={stroke}>M</text>
+            </g>
+            <line x1={14} y1={0} x2={26} y2={0} stroke={stroke} strokeWidth={2} />
+            {/* 拖转热区：按住 M 沿圆周拖动 = 手摇发电（移动元件请拖引线附近） */}
+            <circle r={22} fill="transparent" style={{ cursor: 'grab' }}
+              onPointerDown={(e) => { e.stopPropagation(); onMotorPointerDown?.(e, c) }} />
+          </>
+        )
+      })()}
       {c.kind === 'spdt' && (() => {
         // 单刀双掷（ON-OFF-ON）：公共端 a（下），杠杆掷向触点1/触点2/中位断开
         const lx = c.pos === 1 ? -18 : c.pos === 2 ? 18 : 0
@@ -551,6 +584,7 @@ function CompSymbol({ c, selected, solved, ohmReading, rheoLabel, probeDv, relay
     : c.kind === 'relay' ? (relayOn ? '吸合' : '释放')
     : c.kind === 'gate' ? `${c.type} · ${gateOut ? '输出高' : '输出低'}`
     : c.kind === 'resistor' ? `${c.r}Ω`
+    : c.kind === 'motor' ? `线圈 ${c.r}Ω`
     : c.kind === 'bulb' ? `${c.ratedP}W`
     : isMeter ? (meterRangeOf(c) === null ? '⚠ 表笔未接好' : `${c.ideal ? '理想' : '实际①'} · 量程 ${c.range}${isVoltmeter ? 'V' : 'A'}`)
     : isLed ? (ledLit ? `导通 · ${((solved?.current ?? 0) * 1000).toFixed(0)}mA` : '截止')
@@ -761,6 +795,10 @@ function MiniSymbol({ kind }: { kind: CompKind }) {
         <text x={0} y={5} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--ink)">
           {kind === 'voltmeter' ? 'V' : kind === 'ammeter' ? 'A' : kind === 'ohmmeter' ? 'Ω' : 'G'}
         </text>
+      </>)}
+      {kind === 'motor' && (<>
+        <circle r={11} {...st} />
+        <text x={0} y={4.5} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--ink)">M</text>
       </>)}
       {kind === 'acsource' && (<>
         <circle r={11} {...st} />
@@ -1021,20 +1059,30 @@ export default function App() {
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+    // 依赖 entryView：主页菜单阶段 svg 尚未挂载（el=null 直接退出），进实验台后必须重挂，否则滚轮缩放永久失效
+  }, [entryView])
   // 预览线端点用局部 state：只在连线中更新，平时鼠标划过不触发重渲染
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
 
   // 状态种子：上次解出的门/继电器状态喂回下次求解（反馈电路=锁存器才有记忆；电路拓扑变了会被迭代自动纠正）
   const stateHintsRef = useRef<{ gateOut: Record<string, boolean>; relayOn: Record<string, boolean> }>({ gateOut: {}, relayOn: {} })
+  // 电动机运行态（存 ref 不进撤销栈，同电容 Q）：转速 n（带符号 r/min）/ 发电模式标记 / 转子累计角度
+  const motorNRef = useRef<Record<string, number>>({})
+  const motorGenRef = useRef<Record<string, boolean>>({})
+  const motorAngleRef = useRef<Record<string, number>>({})
+  const [motorTick, setMotorTick] = useState(0) // 转速/角度变化 → 重求解 + 重渲染
   const staticResult = useMemo(() => {
-    const r = solve({ comps: s.comps, wires: s.wires }, stateHintsRef.current)
+    const motorN: Record<string, number> = {}
+    for (const [k, v] of Object.entries(motorNRef.current)) {
+      if (motorGenRef.current[k] && Math.abs(v) > 1e-6) motorN[k] = v // 只有发电态才带电动势
+    }
+    const r = solve({ comps: s.comps, wires: s.wires }, { ...stateHintsRef.current, motorN })
     stateHintsRef.current = { gateOut: r.gateOut ?? {}, relayOn: r.relayOn ?? {} }
     return r
-  }, [s.comps, s.wires])
+  }, [s.comps, s.wires, motorTick])
 
-  // 瞬态引擎：画布上有电容或交流源时启动时间步进（rAF 驱动；状态存 ref，不进撤销栈）
-  const hasDyn = s.comps.some((c) => c.kind === 'capacitor' || c.kind === 'acsource')
+  // 瞬态引擎：画布上有电容、交流源或交流发电态电动机时启动时间步进（rAF 驱动；状态存 ref，不进撤销栈）
+  const hasDyn = s.comps.some((c) => c.kind === 'capacitor' || c.kind === 'acsource' || (c.kind === 'motor' && c.mode === 'ac'))
   const capQRef = useRef<Record<string, number>>({})
   const tRef = useRef(0)
   const acAccRef = useRef<Record<string, number>>({}) // 万用表交流档的瞬时平方 EMA（读数=√值）
@@ -1050,7 +1098,12 @@ export default function App() {
       const dtReal = Math.min((now - last) / 1000, 0.05)
       last = now
       let remaining = dtReal * speed
-      let st: TransientState = { qcap: capQRef.current, t: tRef.current, acAcc: acAccRef.current }
+      // 交流发电电动机：把当前转速喂给瞬态引擎（e = K_E·n·sin(2πft) 每步重算）
+      const motorN: Record<string, number> = {}
+      for (const [k, v] of Object.entries(motorNRef.current)) {
+        if (motorGenRef.current[k] && Math.abs(v) > 1e-6) motorN[k] = v
+      }
+      let st: TransientState = { qcap: capQRef.current, t: tRef.current, acAcc: acAccRef.current, motorN }
       let res: SolveResult | null = null
       let guard = 0
       while (remaining > 1e-6 && guard++ < 250) {
@@ -1082,6 +1135,111 @@ export default function App() {
   const acRmsOf = (id: string): number | null =>
     tResult && acAccRef.current[id] != null ? Math.sqrt(acAccRef.current[id]) : null
   const result = tResult ?? staticResult
+  const resultRef = useRef(result)
+  resultRef.current = result
+
+  // 电动机动力学：rAF 逐帧推进——发电态摩擦衰减（τ=3s）、电动态转速追随电功率（n=P·K_RPM，无上限）、转子角度累计
+  const hasMotor = s.comps.some((c) => c.kind === 'motor')
+  useEffect(() => {
+    if (!hasMotor) {
+      motorNRef.current = {}
+      motorGenRef.current = {}
+      motorAngleRef.current = {}
+      return
+    }
+    let raf = 0
+    let last = performance.now()
+    const loop = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05)
+      last = now
+      let active = false
+      for (const c of s.comps) {
+        if (c.kind !== 'motor') continue
+        let n = motorNRef.current[c.id] ?? 0
+        if (motorGenRef.current[c.id]) {
+          // 发电态：拖动中不衰减也不判定接管（刚按下时 n≈0，电池电压必然压过电动势，判了就永远进不了发电）。
+          // 松手后转速已起来（|n|>30）且外电路端电压压过发电电动势（|U|>|E|）→ 电源在驱动它，切回电动
+          const dragging = motorDraggingIdRef.current === c.id
+          const dv = Math.abs(resultRef.current.byComp[c.id]?.dv ?? 0)
+          if (!dragging && Math.abs(n) > 30 && dv > Math.abs(MOTOR_K_E * n) + 0.05) {
+            motorGenRef.current[c.id] = false
+          } else if (!dragging) {
+            n = Math.abs(n) > 0.5 ? n * Math.exp(-dt / MOTOR_DECAY_TAU) : 0
+            if (n === 0) motorGenRef.current[c.id] = false
+          }
+        } else if (c.mode !== 'ac') {
+          // 电动态（仅直流电机）：转速追随机械功率（电功率 P=I²R 全变机械）；交流电机只做手摇发电，不通电自转
+          const target = (resultRef.current.byComp[c.id]?.power ?? 0) * MOTOR_K_RPM
+          n += (target - n) * Math.min(1, dt / 0.35)
+          if (Math.abs(target) < 0.5 && Math.abs(n) < 0.5) n = 0
+        }
+        motorNRef.current[c.id] = n
+        if (n !== 0) motorAngleRef.current[c.id] = (motorAngleRef.current[c.id] ?? 0) + n * 6 * dt // r/min → deg/s = ×6
+        if (Math.abs(n) > 0.5) active = true
+      }
+      // 清理已删元件
+      for (const k of Object.keys(motorNRef.current)) {
+        if (!s.comps.some((c) => c.id === k)) {
+          delete motorNRef.current[k]; delete motorGenRef.current[k]; delete motorAngleRef.current[k]
+        }
+      }
+      if (active) setMotorTick((t) => t + 1) // 转动中每帧重求解+重渲染；全停后静默
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [hasMotor, s.comps])
+
+  // 手摇发电：按住 M 圆标沿圆周拖动，角速度 × 增速比 = 转速（带方向），进入发电模式
+  const [motorDrag, setMotorDrag] = useState<{ id: string } | null>(null)
+  const motorDragRef = useRef<{ lastAng: number; lastT: number; n: number } | null>(null)
+  const motorDraggingIdRef = useRef<string | null>(null) // 动力学循环用：拖动中不判定"电源接管"、不摩擦衰减
+  const onMotorPointerDown = (e: React.PointerEvent, c: Comp) => {
+    if (s.pendingFrom || s.tool !== 'select') return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const p = toCanvas(e)
+    motorDragRef.current = {
+      lastAng: Math.atan2(p.y - c.y, p.x - c.x),
+      lastT: performance.now(),
+      n: motorNRef.current[c.id] ?? 0,
+    }
+    motorGenRef.current[c.id] = true
+    motorDraggingIdRef.current = c.id
+    setMotorDrag({ id: c.id })
+    s.select(c.id)
+  }
+  useEffect(() => {
+    if (!motorDrag) return
+    const toWorld = (ev: PointerEvent) => {
+      const el = gRef.current ?? svgRef.current
+      const ctm = el?.getScreenCTM()
+      if (!ctm) return null
+      return new DOMPoint(ev.clientX, ev.clientY).matrixTransform(ctm.inverse())
+    }
+    const move = (ev: PointerEvent) => {
+      const st = motorDragRef.current
+      if (!st) return
+      const p = toWorld(ev)
+      const comp = editorState().comps.find((k) => k.id === motorDrag.id)
+      if (!p || !comp) return
+      const ang = Math.atan2(p.y - comp.y, p.x - comp.x)
+      let dAng = ang - st.lastAng
+      if (dAng > Math.PI) dAng -= 2 * Math.PI
+      if (dAng < -Math.PI) dAng += 2 * Math.PI
+      const now = performance.now()
+      const dt = Math.max((now - st.lastT) / 1000, 0.008)
+      const inst = (dAng / dt) * (60 / (2 * Math.PI)) * MOTOR_GEN_GEAR
+      st.n = Math.max(-9999, Math.min(9999, 0.55 * inst + 0.45 * st.n)) // EMA 平滑
+      st.lastAng = ang
+      st.lastT = now
+      motorNRef.current[motorDrag.id] = st.n
+      setMotorTick((t) => t + 1)
+    }
+    const up = () => { motorDraggingIdRef.current = null; setMotorDrag(null) }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+  }, [motorDrag])
 
   // 持久化：电路一变就存
   useEffect(() => {
@@ -1401,6 +1559,7 @@ export default function App() {
     { kind: 'acsource', label: '交流电源' },
     { kind: 'relay', label: '继电器' },
     { kind: 'gate', label: '逻辑门' },
+    { kind: 'motor', label: '电动机' },
     { kind: 'bulb', label: '小灯泡' },
     { kind: 'switch', label: '开关' },
   ]
@@ -1454,7 +1613,7 @@ export default function App() {
               </span>
               <span className="menu-card-txt">
                 <strong>开 始<small>电路实验台</small></strong>
-                <span>16 类元件 · 7 组实验预设 · 万用表 · 数字电路</span>
+                <span>17 类元件 · 7 组实验预设 · 万用表 · 数字电路</span>
               </span>
               <span className="menu-arrow">→</span>
             </button>
@@ -1472,7 +1631,7 @@ export default function App() {
               <span className="menu-arrow">→</span>
             </button>
           </div>
-          <p className="menu-foot">72 项自动化测试 · 离线可运行 · 支持手机触屏</p>
+          <p className="menu-foot">85 项自动化测试 · 离线可运行 · 支持手机触屏</p>
         </div>
       </div>
     )
@@ -1689,6 +1848,10 @@ export default function App() {
                 onSwitchPointerDown={onSwitchPointerDown}
                 onDialOpen={(c) => { setDialFor(c.id); setDialPos(null) }}
                 onPlatePointerDown={onPlatePointerDown}
+                onMotorPointerDown={onMotorPointerDown}
+                spinAngle={c.kind === 'motor' ? motorAngleRef.current[c.id] ?? 0 : undefined}
+                spinN={c.kind === 'motor' ? motorNRef.current[c.id] ?? 0 : undefined}
+                spinGen={c.kind === 'motor' ? !!motorGenRef.current[c.id] : undefined}
                 probeDv={multiProbeDv(c)}
                 relayOn={result.relayOn?.[c.id]}
                 gateOut={result.gateOut?.[c.id]}
@@ -1910,6 +2073,47 @@ export default function App() {
                   <p className="warn" style={{ margin: 0 }}>
                     ⚠ VCC(c) 和 GND(d) 必须接电源，门才能工作。输入 ≥1.5V 为高电平。
                     NOT 门只使用输入 a。输出 p 可接灯泡/继电器/下一个门的输入。
+                  </p>
+                </>
+              )
+            })()}
+            {selected.kind === 'motor' && (() => {
+              const n = motorNRef.current[selected.id] ?? 0
+              const gen = !!motorGenRef.current[selected.id] && Math.abs(n) > 0.5
+              const ac = selected.mode === 'ac'
+              const modeBtn = (m: 'dc' | 'ac', text: string) => (
+                <button className="wide" disabled={(selected.mode ?? 'dc') === m}
+                  onClick={() => s.updateParam(selected.id, 'mode', m)}>
+                  {text}{(selected.mode ?? 'dc') === m ? '（当前）' : ''}
+                </button>
+              )
+              return (
+                <>
+                  {modeBtn('dc', '换向器（直流电机·通电自转+直流发电）')}
+                  {modeBtn('ac', '滑环（交流发电机·手摇发正弦交流）')}
+                  <label>线圈电阻 {selected.r}Ω
+                    <input type="range" min={1} max={50} step={0.5} value={selected.r}
+                      onChange={(e) => s.updateParam(selected.id, 'r', +e.target.value)} />
+                  </label>
+                  {ac ? (
+                    <p className="warn" style={{ margin: 0 }}>
+                      滑环结构：线圈旋转产生正弦交流 e = E·sin(2πft)，E = {MOTOR_K_E}·n（峰值），
+                      频率 f = n/60 Hz（{Math.round(Math.abs(n))} r/min → {(Math.abs(n) / 60).toFixed(1)} Hz，3000 r/min = 50Hz 工频）。
+                      按住 M 圆标拖动手摇发电，配万用表 ACV 档读有效值。
+                      {gen ? `当前发电峰值 ${(MOTOR_K_E * Math.abs(n)).toFixed(2)}V · f = ${(Math.abs(n) / 60).toFixed(1)}Hz` : '当前静止。'}
+                    </p>
+                  ) : (
+                    <p className="warn" style={{ margin: 0 }}>
+                      电动（通电）：线圈电功率 P = I²R 全部转化为机械功率，转速 n = {MOTOR_K_RPM}·P r/min（无上限）。
+                      {gen ? `当前发电 ${(MOTOR_K_E * Math.abs(n)).toFixed(2)}V · ${Math.round(Math.abs(n))} r/min`
+                        : Math.abs(n) > 0.5 ? `当前 ${Math.round(n)} r/min` : '当前停转'}。
+                      <br />发电（手摇）：按住 M 圆标沿圆周拖动（增速比 {MOTOR_GEN_GEAR}），电动势
+                      E = {MOTOR_K_E} V/(r/min)·n，极性随拖动方向；松手后约 {MOTOR_DECAY_TAU}s 摩擦停转。
+                      <br />换向器把线圈里的交流"整流"成外部的直流——切到滑环就能看到原始的交流。
+                    </p>
+                  )}
+                  <p className="warn" style={{ margin: 0 }}>
+                    拖 M 圆标 = 旋转发电，拖引线附近 = 移动元件。串联灯泡再手摇，就是一台手摇发电机。
                   </p>
                 </>
               )

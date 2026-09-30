@@ -145,3 +145,82 @@ describe('瞬态引擎（电容伴随模型，状态=电荷Q）', () => {
     expect(Math.sqrt(st.acAcc['mmV'])).toBeCloseTo(6 * Math.SQRT1_2 * (10.01 / 10.51), 1)
   })
 })
+
+describe('电动机交流发电（滑环模式）', () => {
+  // 交流发电电机(线圈10Ω, n=3000→f=50Hz, 峰值E=6V) + 电阻10Ω 回路
+  function acMotorCircuit(): { circuit: Circuit; st: TransientState } {
+    const comps: Comp[] = [
+      { id: 'm1', kind: 'motor', x: 0, y: 0, rot: 0, r: 10, mode: 'ac' },
+      { id: 'r1', kind: 'resistor', x: 0, y: 0, rot: 0, r: 10 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'm1:a', b: 'r1:a' },
+      { id: 'w2', a: 'r1:b', b: 'm1:b' },
+    ]
+    const st = emptyTransient()
+    st.motorN = { m1: 3000 }
+    return { circuit: { comps, wires }, st }
+  }
+
+  it('正弦峰值时刻：E = K_E·n = 6V → I = 6/20 瞬时值', () => {
+    const { circuit, st } = acMotorCircuit()
+    // 步进到 t=5ms（50Hz 的 sin 峰值：sin(2π·50·0.005)=1）
+    let s = st
+    let last: SolveResult | null = null
+    for (let i = 0; i < 10; i++) {
+      const out = stepTransient(circuit, s, 0.0005)
+      s = out.state
+      last = out.result
+    }
+    const m = last!.byComp['m1']
+    expect(m.current).toBeCloseTo(6 / 20.004, 2)
+  })
+
+  it('过零后反相：t≈1ms 与 t≈15ms 电压符号相反 → 确为交流', () => {
+    const { circuit, st } = acMotorCircuit()
+    let s = st
+    let first: SolveResult | null = null
+    let last: SolveResult | null = null
+    for (let i = 0; i < 30; i++) {
+      const out = stepTransient(circuit, s, 0.0005)
+      s = out.state
+      if (i === 0) first = out.result
+      last = out.result
+    }
+    // t≈0.75ms（sin(2π·50·0.00075)>0）与 t≈14.75ms（sin(2π·50·0.01475)<0）反相
+    expect(first!.byComp['m1'].dv).toBeGreaterThan(0)
+    expect(last!.byComp['m1'].dv).toBeLessThan(0)
+  })
+
+  it('静止（n=0）= 纯阻线圈，无电流无发电', () => {
+    const { circuit, st } = acMotorCircuit()
+    st.motorN = {}
+    const out = stepTransient(circuit, st, 0.0005)
+    expect(out.result.byComp['m1'].current).toBeCloseTo(0, 6)
+  })
+})
+
+describe('电动机直流发电（换向器模式）', () => {
+  it('直流发电给电容充电：τ=RC 后电容电压逼近发电电动势', () => {
+    // 换向器电机(emf=K_E·3000=6V, 线圈10Ω) + 电容1000µF 直接回路，τ = 10×0.001 = 0.01s
+    const comps: Comp[] = [
+      { id: 'm1', kind: 'motor', x: 0, y: 0, rot: 0, r: 10, mode: 'dc' },
+      { id: 'c1', kind: 'capacitor', x: 0, y: 0, rot: 0, c: 0.001 },
+    ]
+    const wires: Wire[] = [
+      { id: 'w1', a: 'm1:a', b: 'c1:a' },
+      { id: 'w2', a: 'c1:b', b: 'm1:b' },
+    ]
+    const st = emptyTransient()
+    st.motorN = { m1: 3000 }
+    let s = st
+    for (let i = 0; i < 100; i++) {
+      const out = stepTransient({ comps, wires }, s, 0.0005)
+      s = out.state
+    }
+    // t=50ms = 5τ → U ≈ 6·(1−e⁻⁵) ≈ 5.96V
+    const u = (s.qcap['c1'] ?? 0) / 0.001
+    expect(u).toBeGreaterThan(5.8)
+    expect(u).toBeLessThan(6)
+  })
+})

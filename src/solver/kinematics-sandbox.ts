@@ -18,6 +18,7 @@ export interface SandboxParams {
   W: number // 场地宽 m
   H: number // 场地高 m
   ground: boolean // 地面开关：false = 底边不碰撞（球掉出由调用方回收）
+  unlimited?: boolean // 场地无限制：四壁全无、不回收，球飞多远都保留
 }
 
 export function makeBall(id: number, x: number, y: number, r: number, vx = 0, vy = 0, e = 1): Ball {
@@ -33,13 +34,15 @@ export function integrate(balls: Ball[], p: SandboxParams, dt: number): void {
   }
 }
 
-/** 球-墙碰撞（四壁反弹，用球自己的恢复系数；位置钳位防穿墙） */
+/** 球-墙碰撞（四壁反弹，用球自己的恢复系数；位置钳位防穿墙）。
+ * 只在地面开启时生效（封闭场地）；地面关闭 = 开放空间，四周全无隐形的墙，球飞出由调用方回收 */
 export function wallCollisions(balls: Ball[], p: SandboxParams): void {
+  if (!p.ground || p.unlimited) return
   for (const b of balls) {
     if (b.x - b.r < 0) { b.x = b.r; if (b.vx < 0) b.vx = -b.vx * b.e }
     if (b.x + b.r > p.W) { b.x = p.W - b.r; if (b.vx > 0) b.vx = -b.vx * b.e }
     if (b.y - b.r < 0) { b.y = b.r; if (b.vy < 0) b.vy = -b.vy * b.e }
-    if (b.y + b.r > p.H && p.ground) { b.y = p.H - b.r; if (b.vy > 0) b.vy = -b.vy * b.e }
+    if (b.y + b.r > p.H) { b.y = p.H - b.r; if (b.vy > 0) b.vy = -b.vy * b.e }
   }
 }
 
