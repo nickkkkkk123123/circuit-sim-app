@@ -117,7 +117,9 @@ export const useKin = create<KinStore>((set, get) => {
     unlimited: false,
     histCount: 0,
 
-    setTool: (tool) => set({ tool, sel: null }),
+    // 切到"选择"工具保留当前选中（否则拖速度/恒力箭头前切工具会丢选中，箭头抓手直接失效）；
+    // 切到放置类工具才清选中（语义=准备放置新物体）
+    setTool: (tool) => set({ tool, sel: tool === 'select' ? get().sel : null }),
     setSel: (sel) => set({ sel }),
 
     addBall: (wx, wy, vx, vy) => {

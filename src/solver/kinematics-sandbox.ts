@@ -82,7 +82,7 @@ export function ballCollisions(balls: Ball[]): void {
   }
 }
 
-/** 引擎单步：细分 subSteps 次防高速穿透。blocks 可选（v0.6 小滑块，缺省不参与） */
+/** 引擎单步：细分 subSteps 次防高速穿透。blocks/zones 可选（v0.6 滑块；zones=力场，为电场/磁场预留，UI 暂未接入） */
 export function stepSandbox(
   balls: Ball[],
   statics: StaticShape[],
@@ -90,9 +90,11 @@ export function stepSandbox(
   dt: number,
   subSteps = 4,
   blocks: Block[] = [],
+  zones: ForceZone[] = [],
 ): void {
   const h = dt / subSteps
   for (let i = 0; i < subSteps; i++) {
+    applyForceZones(balls, blocks, zones, h)
     integrate(balls, p, h)
     integrateBlocks(blocks, p, h)
     ballCollisions(balls)
@@ -287,4 +289,35 @@ export function blockPhysics(blocks: Block[], balls: Ball[], p: SandboxParams): 
   blockWalls(blocks, p)
   blockVsBlock(blocks)
   for (const k of blocks) for (const b of balls) ballVsBlock(b, k)
+}
+
+// ── 力场（引擎预留，UI 暂未接入）：区域恒力，物体进区即受力——电场/磁场/风区的公共底座 ──
+
+export interface ForceZone {
+  id: number
+  x: number
+  y: number // 中心 m
+  hw: number // 半宽 m
+  hh: number // 半高 m
+  fx: number // 区域内物体受到的恒力 x 分量 N（按物体质量折算加速度）
+  fy: number
+}
+
+/** 力场施加：AABB 内的球/滑块每子步获得 Δv = (F/m)·h（与积分同阶，半隐式一致） */
+export function applyForceZones(balls: Ball[], blocks: Block[], zones: ForceZone[], dt: number): void {
+  if (!zones.length) return
+  for (const z of zones) {
+    for (const b of balls) {
+      if (Math.abs(b.x - z.x) <= z.hw && Math.abs(b.y - z.y) <= z.hh) {
+        b.vx += (z.fx / b.m) * dt
+        b.vy += (z.fy / b.m) * dt
+      }
+    }
+    for (const k of blocks) {
+      if (Math.abs(k.x - z.x) <= z.hw + k.hw && Math.abs(k.y - z.y) <= z.hh + k.hh) {
+        k.vx += (z.fx / k.m) * dt
+        k.vy += (z.fy / k.m) * dt
+      }
+    }
+  }
 }

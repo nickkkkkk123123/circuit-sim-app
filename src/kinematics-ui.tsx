@@ -8,7 +8,7 @@ import { GlassToggle } from './glass-toggle'
 
 const BALL_COLORS = ['#5e6ad2', '#e08a97', '#4aa3a2', '#c9a227', '#7a9e4f', '#b06ad2', '#d26a5e', '#6ab0d2']
 const BLOCK_COLOR = '#4a9ed2'
-const PX_PER_N = 4 // 恒力箭头比例：4px/N（屏上 10N 画 40px 长）
+const PX_PER_N = 8 // 恒力箭头比例：8px/N（必须与 fdrag 拖拽换算一致，否则箭头抓手会错位）
 
 export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const s = useKin()
@@ -202,6 +202,22 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         if (Math.hypot(w.x - tip.x, w.y - tip.y) < 14 / viewRef.current.scale) {
           dragRef.current = { kind: 'vdrag', id: b0.id }
           return
+        }
+      }
+    }
+    // 次高优先：选中球/滑块的恒力箭头尖端把手（任意工具下都能直接抓箭头改力）
+    if (s.sel?.type === 'ball' || s.sel?.type === 'block') {
+      const body = s.sel.type === 'ball'
+        ? st.balls.find((q) => q.id === s.sel!.id)
+        : st.blocks.find((q) => q.id === s.sel!.id)
+      if (body) {
+        const pxF = PX_PER_N / viewRef.current.scale
+        const tip = { x: body.x + (body.fx ?? 0) * pxF, y: body.y + (body.fy ?? 0) * pxF }
+        if ((body.fx ?? 0) || (body.fy ?? 0)) {
+          if (Math.hypot(w.x - tip.x, w.y - tip.y) < 14 / viewRef.current.scale) {
+            dragRef.current = { kind: 'fdrag', type: s.sel.type, id: body.id }
+            return
+          }
         }
       }
     }
@@ -555,6 +571,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                   <line x1={body.x} y1={body.y} x2={tx2} y2={ty2} stroke="#4ad2e0" strokeWidth={2.5 / view.scale} />
                   <polygon points={`${tx2},${ty2} ${tx2 + L * Math.cos(a1)},${ty2 + L * Math.sin(a1)} ${tx2 + L * Math.cos(a2)},${ty2 + L * Math.sin(a2)}`} fill="#4ad2e0" />
                   <text x={tx2} y={ty2 - 0.5} fontSize={12 / view.scale} fill="#4ad2e0" textAnchor="middle">F={fm.toFixed(0)}N</text>
+                  {/* 箭头尖端隐形把手：任意工具下抓着拖即改恒力（与速度箭头同交互） */}
+                  <circle cx={tx2} cy={ty2} r={14 / view.scale} fill="transparent" style={{ cursor: 'grab' }}><title>拖动此箭头改变恒力</title></circle>
                 </g>
               )
             })()}
