@@ -11,6 +11,8 @@ export interface Ball {
   r: number // 半径 m
   m: number // 质量 kg（与 r² 成比例的默认值，可覆盖）
   e: number // 恢复系数 0~1（该球材料属性；球-球取两者平均）
+  fx?: number // 恒定外力 x 分量 N（试验功能：施力物体上不消失的力，F=ma）
+  fy?: number // 恒定外力 y 分量 N（屏幕 y 向下为正）
 }
 
 export interface SandboxParams {
@@ -21,14 +23,17 @@ export interface SandboxParams {
   unlimited?: boolean // 场地无限制：四壁全无、不回收，球飞多远都保留
 }
 
-export function makeBall(id: number, x: number, y: number, r: number, vx = 0, vy = 0, e = 1): Ball {
-  return { id, x, y, r, vx, vy, m: r * r * 10, e } // 默认质量 ∝ r²（面密度均匀）
+export function makeBall(id: number, x: number, y: number, r: number, vx = 0, vy = 0, e = 0): Ball {
+  // 默认质量 ∝ r²（面密度均匀）；默认弹性 0（泥球：落地即停，教学默认更"物理直觉"）
+  return { id, x, y, r, vx, vy, m: r * r * 10, e, fx: 0, fy: 0 }
 }
 
-/** 单步积分（半隐式欧拉：先更新速度再更新位置，重力下能量漂移小于显式欧拉） */
+/** 单步积分（半隐式欧拉：先更新速度再更新位置，重力下能量漂移小于显式欧拉）。
+ * 恒力 fx/fy 以 N 计，a = F/m 叠加在重力上 */
 export function integrate(balls: Ball[], p: SandboxParams, dt: number): void {
   for (const b of balls) {
-    b.vy += p.g * dt
+    b.vx += ((b.fx ?? 0) / b.m) * dt
+    b.vy += (p.g + (b.fy ?? 0) / b.m) * dt
     b.x += b.vx * dt
     b.y += b.vy * dt
   }
@@ -77,13 +82,22 @@ export function ballCollisions(balls: Ball[]): void {
   }
 }
 
-/** 引擎单步：细分 subSteps 次防高速穿透 */
-export function stepSandbox(balls: Ball[], statics: StaticShape[], p: SandboxParams, dt: number, subSteps = 4): void {
+/** 引擎单步：细分 subSteps 次防高速穿透。blocks 可选（v0.6 小滑块，缺省不参与） */
+export function stepSandbox(
+  balls: Ball[],
+  statics: StaticShape[],
+  p: SandboxParams,
+  dt: number,
+  subSteps = 4,
+  blocks: Block[] = [],
+): void {
   const h = dt / subSteps
   for (let i = 0; i < subSteps; i++) {
     integrate(balls, p, h)
+    integrateBlocks(blocks, p, h)
     ballCollisions(balls)
     staticCollisions(balls, statics)
+    blockPhysics(blocks, balls, p)
     wallCollisions(balls, p)
   }
 }
@@ -168,4 +182,109 @@ export function staticCollisions(balls: Ball[], statics: StaticShape[]): void {
       }
     }
   }
+}
+
+// ── 小滑块（v0.6 试验功能）：轴对齐矩形刚体，无旋转（滑块本来就不该转） ──
+// 恒力 F=ma + 地面滑动演示的主力道具；与墙/球/滑块互撞，与斜面暂不互撞（同红线预埋）
+
+export interface Block {
+  id: number
+  x: number
+  y: number // 中心 m
+  hw: number // 半宽 m
+  hh: number // 半高 m
+  vx: number
+  vy: number
+  m: number // 质量 kg
+  e: number // 恢复系数（滑块默认 0：放地上不弹跳，纯滑动）
+  fx?: number // 恒定外力 x 分量 N
+  fy?: number // 恒定外力 y 分量 N（向下为正）
+}
+
+export function makeBlock(id: number, x: number, y: number, hw = 1.5, hh = 0.5, vx = 0, vy = 0): Block {
+  return { id, x, y, hw, hh, vx, vy, m: hw * hh * 8, e: 0, fx: 0, fy: 0 }
+}
+
+export function integrateBlocks(blocks: Block[], p: SandboxParams, dt: number): void {
+  for (const k of blocks) {
+    k.vx += ((k.fx ?? 0) / k.m) * dt
+    k.vy += (p.g + (k.fy ?? 0) / k.m) * dt
+    k.x += k.vx * dt
+    k.y += k.vy * dt
+  }
+}
+
+/** 滑块-墙：四壁钳位 + 按滑块自己的恢复系数反弹 */
+function blockWalls(blocks: Block[], p: SandboxParams): void {
+  if (!p.ground || p.unlimited) return
+  for (const k of blocks) {
+    if (k.x - k.hw < 0) { k.x = k.hw; if (k.vx < 0) k.vx = -k.vx * k.e }
+    if (k.x + k.hw > p.W) { k.x = p.W - k.hw; if (k.vx > 0) k.vx = -k.vx * k.e }
+    if (k.y - k.hh < 0) { k.y = k.hh; if (k.vy < 0) k.vy = -k.vy * k.e }
+    if (k.y + k.hh > p.H) { k.y = p.H - k.hh; if (k.vy > 0) k.vy = -k.vy * k.e }
+  }
+}
+
+/** 滑块-滑块：AABB 重叠按最小穿透轴分离，冲量沿该轴（质量反比位置修正） */
+function blockVsBlock(blocks: Block[]): void {
+  for (let i = 0; i < blocks.length; i++) {
+    for (let j = i + 1; j < blocks.length; j++) {
+      const a = blocks[i], b = blocks[j]
+      const dx = b.x - a.x, dy = b.y - a.y
+      const ox = a.hw + b.hw - Math.abs(dx)
+      const oy = a.hh + b.hh - Math.abs(dy)
+      if (ox <= 0 || oy <= 0) continue
+      const totalM = a.m + b.m
+      let nx = 0, ny = 0, sep = 0
+      if (ox < oy) { nx = Math.sign(dx) || 1; sep = ox } else { ny = Math.sign(dy) || 1; sep = oy }
+      a.x -= nx * sep * (b.m / totalM)
+      a.y -= ny * sep * (b.m / totalM)
+      b.x += nx * sep * (a.m / totalM)
+      b.y += ny * sep * (a.m / totalM)
+      const rvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny
+      if (rvn >= 0) continue
+      const ePair = (a.e + b.e) / 2
+      const jImp = (-(1 + ePair) * rvn) / (1 / a.m + 1 / b.m)
+      a.vx -= (jImp / a.m) * nx
+      a.vy -= (jImp / a.m) * ny
+      b.vx += (jImp / b.m) * nx
+      b.vy += (jImp / b.m) * ny
+    }
+  }
+}
+
+/** 球-滑块：圆 vs AABB（最近点法），冲量通解与球-球一致 */
+function ballVsBlock(b: Ball, k: Block): void {
+  const cx = Math.max(k.x - k.hw, Math.min(b.x, k.x + k.hw))
+  const cy = Math.max(k.y - k.hh, Math.min(b.y, k.y + k.hh))
+  const dx = b.x - cx, dy = b.y - cy
+  const d = Math.hypot(dx, dy)
+  if (d >= b.r) return
+  if (d === 0) {
+    // 球心陷入块内（极高速/大步长才发生）：沿最小穿透轴直接推出，不做冲量
+    const px = k.hw + b.r - Math.abs(b.x - k.x)
+    const py = k.hh + b.r - Math.abs(b.y - k.y)
+    if (px < py) b.x += (Math.sign(b.x - k.x) || 1) * px
+    else b.y += (Math.sign(b.y - k.y) || 1) * py
+    return
+  }
+  const nx = dx / d, ny = dy / d
+  b.x += nx * (b.r - d)
+  b.y += ny * (b.r - d)
+  const rvn = (b.vx - k.vx) * nx + (b.vy - k.vy) * ny
+  if (rvn >= 0) return
+  const ePair = (b.e + k.e) / 2
+  const jImp = (-(1 + ePair) * rvn) / (1 / b.m + 1 / k.m)
+  b.vx += (jImp / b.m) * nx
+  b.vy += (jImp / b.m) * ny
+  k.vx -= (jImp / k.m) * nx
+  k.vy -= (jImp / k.m) * ny
+}
+
+/** 滑块全套碰撞：墙 → 滑块互撞 → 球撞滑块（每子步调用一次） */
+export function blockPhysics(blocks: Block[], balls: Ball[], p: SandboxParams): void {
+  if (!blocks.length) return
+  blockWalls(blocks, p)
+  blockVsBlock(blocks)
+  for (const k of blocks) for (const b of balls) ballVsBlock(b, k)
 }

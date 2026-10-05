@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { ballCollisions, kineticEnergy, makeBall, stepSandbox, wallCollisions, type Ball, type SandboxParams, type StaticShape } from './kinematics-sandbox'
+import { ballCollisions, kineticEnergy, makeBall, makeBlock, stepSandbox, wallCollisions, type Ball, type SandboxParams, type StaticShape } from './kinematics-sandbox'
 
 const P = (over?: Partial<SandboxParams>): SandboxParams => ({ g: 9.8, W: 40, H: 20, ground: true, ...over })
-const B = (id: number, x: number, y: number, vx = 0, vy = 0, r = 0.5): Ball => makeBall(id, x, y, r, vx, vy)
+const B = (id: number, x: number, y: number, vx = 0, vy = 0, r = 0.5, e = 1): Ball => makeBall(id, x, y, r, vx, vy, e) // 本套测试沿用"默认完全弹性"旧语义；引擎/UI 出厂的默认弹性已改 0
 
 describe('运动学沙盒（物理引擎）', () => {
   it('等质量弹性正碰：交换速度', () => {
@@ -90,5 +90,50 @@ describe('运动学沙盒（物理引擎）', () => {
     const balls = [B(1, 18, 11.5, 0, 0, 0.5)]
     stepSandbox(balls, statics, P(), 1, 60)
     expect(JSON.stringify(statics)).toBe(before)
+  })
+})
+
+describe('恒力与小滑块（v0.6 试验功能）', () => {
+  it('出厂默认弹性 = 0：落地即停不反弹', () => {
+    const b = makeBall(1, 5, 19.6, 0.5, 0, 3)
+    expect(b.e).toBe(0)
+    wallCollisions([b], P())
+    expect(b.vy).toBeCloseTo(0)
+  })
+
+  it('恒力 F=ma：m=10kg、Fx=10N → 1s 后 vx=1（g=0 排除重力）', () => {
+    const b = makeBall(1, 5, 10, 0.5, 0, 0)
+    b.m = 10
+    b.fx = 10
+    stepSandbox([b], [], P({ g: 0 }), 1, 100)
+    expect(b.vx).toBeCloseTo(1, 1)
+    expect(b.x).toBeCloseTo(5.5, 1)
+  })
+
+  it('滑块默认弹性 0：落到地面 vy 归零不弹跳', () => {
+    const k = makeBlock(1, 5, 19.4)
+    expect(k.e).toBe(0)
+    stepSandbox([], [], P(), 1, 100, [k])
+    expect(k.vy).toBeCloseTo(0)
+    expect(k.y).toBeCloseTo(P().H - k.hh)
+  })
+
+  it('滑块在恒力下沿地面加速（F=ma，无摩擦模型）', () => {
+    const k = makeBlock(1, 5, P().H - 0.5)
+    k.fx = 20 // m=1.5*0.5*8=6kg → a≈3.33
+    stepSandbox([], [], P({ g: 10 }), 1, 100, [k])
+    expect(k.vx).toBeCloseTo((20 / 6) * 1, 0.5)
+    expect(k.y).toBeCloseTo(P().H - k.hh) // 贴地滑行
+  })
+
+  it('球撞静止滑块：动量守恒，滑块被推动', () => {
+    const b = makeBall(1, 8.3, 10, 0.5, 5, 0) // 从左向右撞滑块左壁，e=0 完全非弹性
+    const k = makeBlock(2, 10, 10, 1, 1)
+    const pBefore = b.m * b.vx
+    stepSandbox([b], [], P({ g: 0 }), 0.1, 4, [k])
+    const pAfter = b.m * b.vx + k.m * k.vx
+    expect(Math.abs(b.vx)).toBeLessThan(5) // 球减速
+    expect(k.vx).toBeGreaterThan(0) // 滑块被推走
+    expect(pAfter).toBeCloseTo(pBefore, 0) // 动量近似守恒（子步离散误差内）
   })
 })

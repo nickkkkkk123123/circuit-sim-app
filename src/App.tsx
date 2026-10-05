@@ -5,6 +5,7 @@ import { stepTransient, type TransientState } from './solver/transient'
 import { terminalPos, terminalsOf, TERMINAL_OFFSET, METER_G_R, METER_G_IG, LED_I_FULL, MOTOR_K_RPM, MOTOR_K_E, MOTOR_GEN_GEAR, MOTOR_DECAY_TAU, meterRangeOf, multiKindOf, multiRangeOf, V_RANGES, A_RANGES, capC, type Comp, type CompKind, type MeterPosts, type Gate } from './solver/types'
 import { EXPERIMENTS } from './experiments'
 import { KinematicsLab } from './kinematics-ui'
+import { GlassToggle } from './glass-toggle'
 import { THEME as T } from './theme'
 
 const W = 1600
@@ -1649,6 +1650,9 @@ export default function App() {
             </button>
           </div>
           <p className="menu-foot">86 项自动化测试 · 离线可运行 · 支持手机触屏</p>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+            <GlassToggle />
+          </div>
         </div>
       </div>
     )
@@ -1672,6 +1676,7 @@ export default function App() {
         </div>
         <div className="pal-head-tools">
           <button className="icon-btn" onClick={() => setHelpOpen(true)} title="操作说明" style={{ fontWeight: 700 }}>?</button>
+          <GlassToggle />
           <button className="icon-btn" onClick={toggleTheme} title="切换黑/白主题">{theme === 'dark' ? <UiIcon name="sun" /> : <UiIcon name="moon" />}</button>
           <button className="icon-btn" onClick={() => setEntryView('menu')} title="返回主页"><UiIcon name="home" /></button>
           <span style={{ flex: 1 }} />

@@ -4,8 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { kineticEnergy, stepSandbox, type SandboxParams } from './solver/kinematics-sandbox'
 import { segEndpoints, arcPoints } from './solver/kinematics-sandbox'
 import { useKin, kinState, type KinSel, type KinTool } from './sandbox-store'
+import { GlassToggle } from './glass-toggle'
 
 const BALL_COLORS = ['#5e6ad2', '#e08a97', '#4aa3a2', '#c9a227', '#7a9e4f', '#b06ad2', '#d26a5e', '#6ab0d2']
+const BLOCK_COLOR = '#4a9ed2'
+const PX_PER_N = 4 // 恒力箭头比例：4px/N（屏上 10N 画 40px 长）
 
 export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const s = useKin()
@@ -23,8 +26,9 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
   const worldRef = useRef<SVGGElement | null>(null)
   const trailRef = useRef<Map<number, string[]>>(new Map())
   const dragRef = useRef<
-    | { kind: 'place'; swx: number; swy: number; cwx: number; cwy: number }
+    | { kind: 'place'; placeKind: 'ball' | 'block'; swx: number; swy: number; cwx: number; cwy: number }
     | { kind: 'move'; id: number; lwx: number; lwy: number }
+    | { kind: 'moveBlock'; id: number; lwx: number; lwy: number }
     | { kind: 'moveStatic'; id: number; lwx: number; lwy: number }
     | { kind: 'vdrag'; id: number }
     | { kind: 'pan'; lpx: number; lpy: number }
@@ -72,7 +76,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       const prevVel = new Map<number, { vx: number; vy: number }>()
       for (const b of st.balls) prevVel.set(b.id, { vx: b.vx, vy: b.vy })
       const params: SandboxParams = { g: st.gOn ? st.g : 0, W, H, ground: st.ground, unlimited: st.unlimited }
-      stepSandbox(st.balls, st.statics, params, dt, 4)
+      stepSandbox(st.balls, st.statics, params, dt, 4, st.blocks)
       const acc = accelRef.current
       acc.clear()
       for (const b of st.balls) {
@@ -83,7 +87,9 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       if (!st.ground && !st.unlimited) {
         // 开放空间回收：掉出场地下方或横向飞出边界都回收（无限制模式永不回收）
         const alive = st.balls.filter((b) => b.y < H + 15 && b.x > -15 && b.x < W + 15)
-        if (alive.length !== st.balls.length) useKin.setState({ balls: alive })
+        const aliveB = st.blocks.filter((k) => k.y < H + 15 && k.x > -15 && k.x < W + 15)
+        if (alive.length !== st.balls.length || aliveB.length !== st.blocks.length)
+          useKin.setState({ balls: alive, blocks: aliveB })
       }
       if (st.trails) {
         for (const b of st.balls) {
@@ -146,6 +152,9 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     for (const b of st.balls) {
       if (Math.hypot(b.x - wx, b.y - wy) <= b.r + 0.15) return { type: 'ball', id: b.id }
     }
+    for (const k of st.blocks) {
+      if (Math.abs(wx - k.x) <= k.hw + 0.15 && Math.abs(wy - k.y) <= k.hh + 0.15) return { type: 'block', id: k.id }
+    }
     for (const sh of st.statics) {
       const pts = sh.kind === 'seg'
         ? (() => { const ep = segEndpoints(sh); return [[ep.ax, ep.ay], [ep.bx, ep.by]] })()
@@ -170,8 +179,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         : { kind: 'arc', cx: w.x, cy: w.y, r: 5, angleDeg: Math.PI })
       return
     }
-    if (st.tool === 'ball') {
-      dragRef.current = { kind: 'place', swx: w.x, swy: w.y, cwx: w.x, cwy: w.y }
+    if (st.tool === 'ball' || st.tool === 'block') {
+      dragRef.current = { kind: 'place', placeKind: st.tool, swx: w.x, swy: w.y, cwx: w.x, cwy: w.y }
       return
     }
     // 优先级最高：已选中球的速度箭头尖端（必须在 setSel 之前判，否则拖箭头会先取消选中）
@@ -190,6 +199,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     st.setSel(hit)
     if (hit?.type === 'ball') {
       dragRef.current = { kind: 'move', id: hit.id, lwx: w.x, lwy: w.y }
+    } else if (hit?.type === 'block') {
+      dragRef.current = { kind: 'moveBlock', id: hit.id, lwx: w.x, lwy: w.y }
     } else if (hit?.type === 'static') {
       dragRef.current = { kind: 'moveStatic', id: hit.id, lwx: w.x, lwy: w.y }
     } else dragRef.current = { kind: 'pan', lpx: e.clientX, lpy: e.clientY }
@@ -202,6 +213,9 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     if (d.kind === 'place') { d.cwx = w.x; d.cwy = w.y }
     else if (d.kind === 'move') {
       kinState().moveBall(d.id, w.x - d.lwx, w.y - d.lwy)
+      d.lwx = w.x; d.lwy = w.y
+    } else if (d.kind === 'moveBlock') {
+      kinState().moveBlock(d.id, w.x - d.lwx, w.y - d.lwy)
       d.lwx = w.x; d.lwy = w.y
     } else if (d.kind === 'moveStatic') {
       kinState().moveStatic(d.id, w.x - d.lwx, w.y - d.lwy)
@@ -229,12 +243,16 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     if (!d || d.kind !== 'place') return
     const w = toWorld(e)
     if (d.swx < 0 || d.swx > W || d.swy < 0 || d.swy > H) return
-    kinState().addBall(d.swx, d.swy, ((w.x - d.swx) * view.scale) / SCALE_VEL, ((w.y - d.swy) * view.scale) / SCALE_VEL)
+    const vx = ((w.x - d.swx) * view.scale) / SCALE_VEL
+    const vy = ((w.y - d.swy) * view.scale) / SCALE_VEL
+    if (d.placeKind === 'block') kinState().addBlock(d.swx, d.swy, vx, vy)
+    else kinState().addBall(d.swx, d.swy, vx, vy)
   }
   const SCALE_VEL = 54 // 屏幕 1m 的拖拽 ≙ 3 m/s
 
-  const ke = kineticEnergy(s.balls)
+  const ke = kineticEnergy(s.balls) + s.blocks.reduce((sum, k) => sum + 0.5 * k.m * (k.vx * k.vx + k.vy * k.vy), 0)
   const selBall = s.sel?.type === 'ball' ? s.balls.find((b) => b.id === s.sel!.id) : undefined
+  const selBlock = s.sel?.type === 'block' ? s.blocks.find((k) => k.id === s.sel!.id) : undefined
   const selStatic = s.sel?.type === 'static' ? s.statics.find((q) => q.id === s.sel!.id) : undefined
 
   const toolBtn = (t: KinTool, label: string, dot: string) => (
@@ -242,12 +260,26 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       <span className="dot" style={{ background: dot }} />{label}
     </button>
   )
+  // 恒力输入（N）：试验功能——F=ma 的直接操纵面，画布上以青色箭头可视化
+  const forceInputs = (fx: number, fy: number, apply: (patch: { fx: number; fy: number }) => void) => (
+    <>
+      <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        恒力 Fx<input type="number" min={-200} max={200} step={1} value={fx} style={{ width: 64, flex: 'none' }}
+          onChange={(e) => apply({ fx: Math.max(-200, Math.min(200, +e.target.value || 0)), fy })} /> N
+      </label>
+      <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        恒力 Fy<input type="number" min={-200} max={200} step={1} value={fy} style={{ width: 64, flex: 'none' }}
+          onChange={(e) => apply({ fx, fy: Math.max(-200, Math.min(200, +e.target.value || 0)) })} /> N
+      </label>
+    </>
+  )
 
   return (
     <div className="app">
       <aside className="palette">
         <div className="pal-head">
           <h1>运动学实验室</h1>
+          <GlassToggle />
           <button className="icon-btn" title="返回主页" onClick={onHome}>
             <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 11 12 4l8 7M6.5 9.5V20h11V9.5M10 20v-5h4v5" />
@@ -256,6 +288,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         </div>
         <p className="hint">物体</p>
         {toolBtn('ball', '小球（拖拽定初速）', '#5e6ad2')}
+        {toolBtn('block', '小滑块（可加恒力）', BLOCK_COLOR)}
         {toolBtn('seg', '斜面', '#4aa3a2')}
         {toolBtn('arc', '四分之一圆弧', '#c9a227')}
         {toolBtn('select', '选择 / 编辑', '#9aa3b8')}
@@ -289,9 +322,32 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
                     <input type="range" min={0} max={1} step={0.05} value={selBall.e}
                       onChange={(e) => kinState().updateBall(selBall.id, { e: +e.target.value })} />
                   </label>
+                  {forceInputs(selBall.fx ?? 0, selBall.fy ?? 0, (patch) => kinState().updateBall(selBall.id, patch))}
                 </>
               )
             })()}
+            <button className="wide danger" onClick={() => kinState().removeSel()}>删除</button>
+          </>
+        ) : selBlock ? (
+          <>
+            <p className="hint">属性 · 小滑块</p>
+            <label>宽 {(selBlock.hw * 2).toFixed(1)}m
+              <input type="range" min={0.6} max={6} step={0.2} value={selBlock.hw * 2}
+                onChange={(e) => kinState().updateBlock(selBlock.id, { hw: +e.target.value / 2 })} />
+            </label>
+            <label>高 {(selBlock.hh * 2).toFixed(1)}m
+              <input type="range" min={0.4} max={4} step={0.2} value={selBlock.hh * 2}
+                onChange={(e) => kinState().updateBlock(selBlock.id, { hh: +e.target.value / 2 })} />
+            </label>
+            <label>质量 {selBlock.m.toFixed(1)}kg
+              <input type="range" min={0.5} max={40} step={0.5} value={selBlock.m}
+                onChange={(e) => kinState().updateBlock(selBlock.id, { m: +e.target.value })} />
+            </label>
+            <label>弹性 {selBlock.e.toFixed(2)}
+              <input type="range" min={0} max={1} step={0.05} value={selBlock.e}
+                onChange={(e) => kinState().updateBlock(selBlock.id, { e: +e.target.value })} />
+            </label>
+            {forceInputs(selBlock.fx ?? 0, selBlock.fy ?? 0, (patch) => kinState().updateBlock(selBlock.id, patch))}
             <button className="wide danger" onClick={() => kinState().removeSel()}>删除</button>
           </>
         ) : selStatic ? (
@@ -344,7 +400,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         <label style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={s.trails} onChange={(e) => kinState().setTrails(e.target.checked)} />轨迹
         </label>
-        <p className="hint" style={{ margin: 0 }}>{s.balls.length} 个球 · 总动能 {ke.toFixed(1)} J</p>
+        <p className="hint" style={{ margin: 0 }}>{s.balls.length} 球 · {s.blocks.length} 滑块 · 总动能 {ke.toFixed(1)} J</p>
         <div className="pal-row">
           <button onClick={() => kinState().setRunning(!s.running)}>{s.running ? '⏸ 暂停' : '▶ 运行'}</button>
           <button onClick={() => kinState().undo()} disabled={!s.histCount}>撤销 {s.histCount ? `(${s.histCount})` : ''}</button>
@@ -355,9 +411,11 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         </div>
         <p className="tips">
           小球+拖拽初速 = 斜抛；<br />
+          滑块选中加恒力 Fx/Fy，<br />
+          青色箭头=力的方向大小；<br />
           斜面/圆弧点击放置，属性里调角度；<br />
           关地面+关重力 = 惯性直线；<br />
-          弹性 0 泥球 / 1 完全弹性。
+          弹性默认 0（放地上不弹跳），1 完全弹性。
         </p>
       </aside>
       <div className="stage">
@@ -450,6 +508,33 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
               const isSel = s.sel?.type === 'ball' && s.sel.id === b.id
               return <circle key={b.id} cx={b.x} cy={b.y} r={b.r} fill={BALL_COLORS[(b.id - 1) % BALL_COLORS.length]} stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'none'} strokeWidth={0.15} opacity={0.9} />
             })}
+            {s.blocks.map((k) => {
+              const isSel = s.sel?.type === 'block' && s.sel.id === k.id
+              return (
+                <rect key={k.id} x={k.x - k.hw} y={k.y - k.hh} width={k.hw * 2} height={k.hh * 2} rx={0.2}
+                  fill={BLOCK_COLOR} opacity={0.92} stroke={isSel ? 'var(--accent-soft, #5e6ad2)' : 'none'} strokeWidth={0.18} />
+              )
+            })}
+            {/* 选中物体的恒力箭头（青色，4px/N；速度/加速度箭头颜色与之区分） */}
+            {(() => {
+              const body = selBall ?? selBlock
+              if (!body) return null
+              const fx = body.fx ?? 0, fy = body.fy ?? 0
+              const fm = Math.hypot(fx, fy)
+              if (fm < 0.5) return null
+              const px = PX_PER_N / view.scale
+              const tx2 = body.x + fx * px, ty2 = body.y + fy * px
+              const ang = Math.atan2(fy, fx)
+              const L = 10 / view.scale
+              const a1 = ang + Math.PI - 0.42, a2 = ang + Math.PI + 0.42
+              return (
+                <g key="force">
+                  <line x1={body.x} y1={body.y} x2={tx2} y2={ty2} stroke="#4ad2e0" strokeWidth={2.5 / view.scale} />
+                  <polygon points={`${tx2},${ty2} ${tx2 + L * Math.cos(a1)},${ty2 + L * Math.sin(a1)} ${tx2 + L * Math.cos(a2)},${ty2 + L * Math.sin(a2)}`} fill="#4ad2e0" />
+                  <text x={tx2} y={ty2 - 0.5} fontSize={12 / view.scale} fill="#4ad2e0" textAnchor="middle">F={fm.toFixed(0)}N</text>
+                </g>
+              )
+            })()}
             {/* 选中球的速度/加速度矢量（含正交分量分解，屏幕定长像素比例） */}
             {selBall && (() => {
               const b = selBall
