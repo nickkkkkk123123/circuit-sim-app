@@ -1043,6 +1043,23 @@ export default function App() {
     setViewState(v)
     setViewAnim(anim)
   }
+  // 加载实验预设后自动适配视野：按元件包围盒居中并适度放大，投屏/录屏画面饱满
+  const fitTick = s.fitTick
+  useEffect(() => {
+    if (!fitTick) return
+    const comps = editorState().comps
+    if (!comps.length) return
+    const xs = comps.map((c) => c.x)
+    const ys = comps.map((c) => c.y)
+    const pad = 130 // 端子引线与 I/P 读数标签的外扩余量
+    const bx = Math.min(...xs) - pad
+    const by = Math.min(...ys) - pad
+    const bw = Math.max(...xs) - Math.min(...xs) + pad * 2
+    const bh = Math.max(...ys) - Math.min(...ys) + pad * 2
+    const scale = Math.min(1.35, Math.max(0.6, Math.min(W / bw, H / bh)))
+    applyView({ scale, tx: W / 2 - (bx + bw / 2) * scale, ty: H / 2 - (by + bh / 2) * scale }, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitTick])
   useEffect(() => {
     const el = gRef.current ?? svgRef.current
     if (!el) return
@@ -1631,7 +1648,7 @@ export default function App() {
               <span className="menu-arrow">→</span>
             </button>
           </div>
-          <p className="menu-foot">85 项自动化测试 · 离线可运行 · 支持手机触屏</p>
+          <p className="menu-foot">86 项自动化测试 · 离线可运行 · 支持手机触屏</p>
         </div>
       </div>
     )

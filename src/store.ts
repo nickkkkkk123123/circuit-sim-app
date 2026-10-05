@@ -57,6 +57,7 @@ interface EditorState extends Circuit {
   setGateType: (t: Gate['type']) => void
   setGatePickerOpen: (open: boolean) => void
   loadExperiment: (id: string) => void
+  fitTick: number // 每次载入实验预设自增，App 监听它做"加载即适配视野"
   clearAll: () => void
   undo: () => void
   beginHistory: () => void // 拖拽等连续操作前打快照，整个手势算一步
@@ -84,6 +85,7 @@ export const useEditor = create<EditorState>((set, get) => {
   selectedWire: null,
   pendingFrom: null,
   demoOpen: false,
+  fitTick: 0,
   gateType: 'AND',
   gatePickerOpen: false,
   histCount: 0,
@@ -233,7 +235,7 @@ export const useEditor = create<EditorState>((set, get) => {
       return `${idMap.get(cid)!}:${term}`
     }
     const wires = c0.wires.map((w) => ({ id: nextId('w'), a: remapTerm(w.a), b: remapTerm(w.b) }))
-    set({ comps, wires, tool: 'select', selectedId: null, pendingFrom: null, demoOpen: false })
+    set({ comps, wires, tool: 'select', selectedId: null, pendingFrom: null, demoOpen: false, fitTick: get().fitTick + 1 })
   },
   }
 })
