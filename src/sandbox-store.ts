@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { makeBall, makeBlock, type Ball, type Block, type StaticShape } from './solver/kinematics-sandbox'
 
-export type KinTool = 'select' | 'ball' | 'block' | 'seg' | 'arc'
+export type KinTool = 'select' | 'ball' | 'block' | 'force' | 'seg' | 'arc'
 export type KinSel = { type: 'ball' | 'block' | 'static'; id: number } | null
 
 const STORAGE_KEY = 'kin-sandbox-v2'

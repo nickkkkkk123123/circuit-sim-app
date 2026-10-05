@@ -29,6 +29,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
     | { kind: 'place'; placeKind: 'ball' | 'block'; swx: number; swy: number; cwx: number; cwy: number }
     | { kind: 'move'; id: number; lwx: number; lwy: number }
     | { kind: 'moveBlock'; id: number; lwx: number; lwy: number }
+    | { kind: 'fdrag'; type: 'ball' | 'block'; id: number }
     | { kind: 'moveStatic'; id: number; lwx: number; lwy: number }
     | { kind: 'vdrag'; id: number }
     | { kind: 'pan'; lpx: number; lpy: number }
@@ -183,6 +184,15 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       dragRef.current = { kind: 'place', placeKind: st.tool, swx: w.x, swy: w.y, cwx: w.x, cwy: w.y }
       return
     }
+    // 恒力工具：点到球/滑块即选中并进入"拖拽定力"，拖多远力多大（8px ≙ 1N）
+    if (st.tool === 'force') {
+      const hitF = hitTest(w.x, w.y)
+      if (hitF && (hitF.type === 'ball' || hitF.type === 'block')) {
+        st.setSel(hitF)
+        dragRef.current = { kind: 'fdrag', type: hitF.type, id: hitF.id }
+      }
+      return
+    }
     // 优先级最高：已选中球的速度箭头尖端（必须在 setSel 之前判，否则拖箭头会先取消选中）
     if (s.sel?.type === 'ball') {
       const b0 = st.balls.find((q) => q.id === s.sel!.id)
@@ -226,6 +236,18 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
       if (b) {
         const px = 18 / viewRef.current.scale
         kinState().updateBall(d.id, { vx: (w.x - b.x) / px, vy: (w.y - b.y) / px })
+      }
+    } else if (d.kind === 'fdrag') {
+      // 恒力拖拽：从物体中心向外拖，8px 屏幕 ≙ 1N，实时写入 fx/fy（拖回中心=清零）
+      const N_PER_PX = 1 / 8
+      const body = d.type === 'ball' ? kinState().balls.find((q) => q.id === d.id) : kinState().blocks.find((q) => q.id === d.id)
+      if (body) {
+        const patch = {
+          fx: (w.x - body.x) * viewRef.current.scale * N_PER_PX,
+          fy: (w.y - body.y) * viewRef.current.scale * N_PER_PX,
+        }
+        if (d.type === 'ball') kinState().updateBall(d.id, patch)
+        else kinState().updateBlock(d.id, patch)
       }
     } else {
       // delta 必须在突变 d.lpx 之前算好：setView 的 updater 是延迟执行的，
@@ -289,6 +311,7 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         <p className="hint">物体</p>
         {toolBtn('ball', '小球（拖拽定初速）', '#5e6ad2')}
         {toolBtn('block', '小滑块（可加恒力）', BLOCK_COLOR)}
+        {toolBtn('force', '恒力（点物体拖拽）', '#4ad2e0')}
         {toolBtn('seg', '斜面', '#4aa3a2')}
         {toolBtn('arc', '四分之一圆弧', '#c9a227')}
         {toolBtn('select', '选择 / 编辑', '#9aa3b8')}
@@ -411,8 +434,8 @@ export function KinematicsLab({ onHome }: { onHome: () => void }) {
         </div>
         <p className="tips">
           小球+拖拽初速 = 斜抛；<br />
-          滑块选中加恒力 Fx/Fy，<br />
-          青色箭头=力的方向大小；<br />
+          恒力工具：点球/滑块后拖拽，<br />
+          拖多远力多大（8px=1N）；<br />
           斜面/圆弧点击放置，属性里调角度；<br />
           关地面+关重力 = 惯性直线；<br />
           弹性默认 0（放地上不弹跳），1 完全弹性。
