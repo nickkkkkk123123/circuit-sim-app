@@ -84,6 +84,12 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
   transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
 }
 .palette.resizing { transition: background 0.3s ease; }
+/* 侧栏/属性面板滚动条：细+主题色，替代默认灰条 */
+.palette, .inspector { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.palette::-webkit-scrollbar, .inspector::-webkit-scrollbar { width: 6px; }
+.palette::-webkit-scrollbar-track, .inspector::-webkit-scrollbar-track { background: transparent; }
+.palette::-webkit-scrollbar-thumb, .inspector::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.palette::-webkit-scrollbar-thumb:hover, .inspector::-webkit-scrollbar-thumb:hover { background: var(--border-hot); }
 .pal-head {
   display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
   padding-bottom: 10px; border-bottom: 1px solid var(--panel-line);
