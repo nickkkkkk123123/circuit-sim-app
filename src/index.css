@@ -90,6 +90,15 @@ body { background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system
 .palette::-webkit-scrollbar-track, .inspector::-webkit-scrollbar-track { background: transparent; }
 .palette::-webkit-scrollbar-thumb, .inspector::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 .palette::-webkit-scrollbar-thumb:hover, .inspector::-webkit-scrollbar-thumb:hover { background: var(--border-hot); }
+/* 玻璃材质开关：自带样式（落地页无 .app 容器，不能蹭 .app .icon-btn），幽灵态+开启点亮 */
+.glass-btn {
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.glass-btn:hover { background: var(--panel-hover); border-color: var(--border-hot); color: var(--ink); }
+.glass-btn.glass-on { color: var(--accent-soft); border-color: var(--accent); background: var(--panel-raise); }
 .pal-head {
   display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
   padding-bottom: 10px; border-bottom: 1px solid var(--panel-line);

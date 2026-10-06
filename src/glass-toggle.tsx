@@ -12,10 +12,9 @@ export function GlassToggle() {
   }, [on])
   return (
     <button
-      className="icon-btn"
+      className={`glass-btn${on ? ' glass-on' : ''}`}
       title={on ? '玻璃材质：开（试验功能）' : '玻璃材质：关（试验功能）'}
       onClick={() => setOn((v) => !v)}
-      style={on ? { color: 'var(--accent-soft)', borderColor: 'var(--accent)' } : undefined}
     >
       <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 3c3.5 4.2 6 7.4 6 10a6 6 0 1 1-12 0c0-2.6 2.5-5.8 6-10z" />
